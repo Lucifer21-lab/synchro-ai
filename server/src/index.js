@@ -5,13 +5,13 @@ const http = require('http');
 const cors = require('cors');
 require('dotenv').config();
 
-// imprt all middlewares
-const errorHandler = require('./middleware/errorMiddleware');
+// Import middlewares
+const { errorHandler } = require('./middleware/errorMiddleware');
 
 // import all config files
 const connectDB = require('./config/db');
 
-// import all routes
+// import all routes 
 const activityRoutes = require('./routes/activities');
 const commentsRoutes = require('./routes/comments');
 const notificationRoutes = require('./routes/notifications');
@@ -24,7 +24,7 @@ const authRoutes = require('./routes/auth');
 const app = express();
 const server = http.createServer(app);
 
-// connect the config files
+// connect to the database
 connectDB();
 
 // setup middleware
@@ -33,10 +33,11 @@ app.use(express.json({ limit: '2mb' })); // body parser for json
 app.use(express.urlencoded({ extended: true, limit: '2mb' })); // body parser for url encoded data
 app.use('/uploads', express.static('uploads')); // serve static files
 
+// Security: Rate Limiting
 const limiter = rateLimiter({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    message: "Too many request from this IP, please try again later"
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    message: "Too many requests from this IP, please try again later"
 });
 
 app.use('/api/', limiter);
@@ -50,7 +51,7 @@ app.use('/api/projects', projectsRoutes);
 app.use('/api/task', taskRoutes);
 app.use('/api/submissions', submissionRoutes);
 
-// health check and final error handler
+// health check
 app.get('/health', (req, res) => {
     res.json({
         status: 'OK',
@@ -58,6 +59,7 @@ app.get('/health', (req, res) => {
     });
 });
 
+// 404 handler for non-existent routes
 app.use((req, res, next) => {
     res.status(404).json({
         success: false,
@@ -65,7 +67,8 @@ app.use((req, res, next) => {
     });
 });
 
-app.use(errorHandler)
+// Final Global Error Handler (Must be the last middleware)
+app.use(errorHandler);
 
 // start the server
 const PORT = process.env.PORT || 5000;
@@ -73,13 +76,14 @@ server.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
 });
 
+// Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
     console.error('UNHANDLED REJECTION! Shutting Down....');
     console.error(err.name, err.message);
     server.close(() => {
         console.log('Exiting the server');
         process.exit(1);
-    })
-})
+    });
+});
 
 module.exports = app;
