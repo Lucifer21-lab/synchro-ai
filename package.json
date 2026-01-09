@@ -1,0 +1,17 @@
+{
+  "name": "synchro-ai",
+  "version": "1.0.0",
+  "description": "Collaborative Smart Workspace with AI",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "install-all": "npm install && npm install --prefix client && npm install --prefix server",
+    "client": "npm run dev --prefix client",
+    "server": "npm run dev --prefix server",
+    "dev": "npx concurrently --names \"BACKEND,FRONTEND\" --prefix-colors \"yellow,blue\" \"npm run server\" \"npm run client\"",
+    "build": "npm run build --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
