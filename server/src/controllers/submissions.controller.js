@@ -3,6 +3,7 @@ const Activity = require('../models/Activity');
 const Task = require('../models/Task');
 const Project = require('../models/Project');
 const { ApiResponse, ApiError } = require('../utils/apiResponse');
+const notificationService = require('../services/notificationServices');
 
 // submit work for the assigned task
 exports.submitWork = async (req, res, next) => {
@@ -72,6 +73,13 @@ exports.mergeWork = async (req, res, next) => {
             action: `Merged work for the task : ${task.title}`
         })
 
+        // send notification
+        await notificationService.notifyMerge(
+            submission.submittedBy,
+            req.user.id,
+            task.title
+        );
+
         res.status(200).json(new ApiResponse(
             { submission, task },
             'Work successfully merged into project'
@@ -97,4 +105,4 @@ exports.getTaskSubmissions = async (req, res, next) => {
     catch (error) {
         next(error);
     }
-}
+};

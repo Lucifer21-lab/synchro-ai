@@ -30,7 +30,8 @@ const projectSchema = new mongoose.Schema({
     // SECURE STORAGE: For your encryption.js utility output
     aiApiKey: {
         iv: { type: String },
-        content: { type: String }
+        content: { type: String },
+        select: false
     },
     aiSummary: {
         type: String,

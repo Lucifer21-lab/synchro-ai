@@ -13,5 +13,10 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "cloudinary": "^2.8.0",
+    "fs": "^0.0.1-security"
   }
 }

@@ -18,7 +18,7 @@ exports.getProjectActivities = async (req, res, next) => {
     catch (error) {
         next(error);
     }
-}
+};
 
 exports.getUserActivities = async (req, res, next) => {
     try {
@@ -33,4 +33,4 @@ exports.getUserActivities = async (req, res, next) => {
     } catch (error) {
         next(error);
     }
-}
+};

@@ -3,13 +3,14 @@ const express = require('express');
 const rateLimiter = require('express-rate-limit');
 const http = require('http');
 const cors = require('cors');
+const { Server } = require('socket-io');
 require('dotenv').config();
 
-// Import middlewares
+// Import middlewares and services
 const { errorHandler } = require('./middleware/errorMiddleware');
-
-// import all config files
+const notificationService = require('./services/notificationService');
 const connectDB = require('./config/db');
+const socketConfig = require('./config/socket');
 
 // import all routes 
 const activityRoutes = require('./routes/activities');
@@ -23,6 +24,12 @@ const authRoutes = require('./routes/auth');
 // initialise express app
 const app = express();
 const server = http.createServer(app);
+
+// socket config
+const io = new Server(server, socketConfig);
+
+// connect notification service to the socket instance
+notificationService.init(io);
 
 // connect to the database
 connectDB();
@@ -50,6 +57,18 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/projects', projectsRoutes);
 app.use('/api/task', taskRoutes);
 app.use('/api/submissions', submissionRoutes);
+
+// socket.io connection logic
+io.on('connection', (socket) => {
+    socket.on('join', (userId) => {
+        socket.join(userId);
+        console.log(`User ${userId} jooined their notification room`);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('User disconnected from socket');
+    });
+});
 
 // health check
 app.get('/health', (req, res) => {

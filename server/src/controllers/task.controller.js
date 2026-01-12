@@ -1,27 +1,14 @@
 const Task = require('../models/Task');
 const Activity = require('../models/Activity');
 const { ApiResponse, ApiError } = require('../utils/apiResponse');
+const { taskService } = require('../services/taskServices');
 
 // create task and assign it to the user
 exports.createTask = async (req, res, next) => {
     try {
-        const { project, title, description, assignedTo, priority, deadline } = req.body;
-        const task = await Task.create({
-            project,
-            title,
-            description,
-            assignedTo,
-            priority,
-            deadline
-        });
+        const task = await taskService.createTaskAndNotify(req.body, req.user.id);
 
-        await Activity.create({
-            project,
-            user: req.user.id,
-            action: `Created Task: "${title}"`
-        });
-
-        res.status(201).json(new ApiResponse(task, 'Task created succesfully', 201));
+        res.status(201).json(new ApiResponse(task, 'Task assigned and notified'));
     }
     catch (error) {
         next(error);
