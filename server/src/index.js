@@ -6,7 +6,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const connectDB = require('./config/db');
 
-// Import Routes (Make sure these files use 'require' and 'module.exports' too!)
+// Import Routes
 const authRoutes = require('./routes/auth');
 const projectRoutes = require('./routes/projects');
 const taskRoutes = require('./routes/task');
@@ -14,7 +14,9 @@ const submissionRoutes = require('./routes/submissions');
 const activityRoutes = require('./routes/activities');
 const notificationRoutes = require('./routes/notifications');
 const commentRoutes = require('./routes/comments');
-const NotificationService = require('./services/notificationServices')
+
+// Initialize Services (if they have side effects/listeners)
+require('./services/notificationServices');
 
 // Load environment variables
 dotenv.config();
@@ -25,19 +27,34 @@ connectDB();
 const app = express();
 const server = http.createServer(app);
 
-// Socket.io Setup
+// --- CONFIGURATION ---
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+
+// 1. Socket.io Setup
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:5173", // Your Vite Client URL
-        methods: ["GET", "POST", "PATCH", "DELETE"]
+        origin: CLIENT_URL,
+        methods: ["GET", "POST", "PATCH", "DELETE"],
+        credentials: true
     }
 });
 
-// Middleware
-app.use(cors());
+// 2. Middleware
+// CRITICAL FIX: CORS must match the client URL and allow credentials
+app.use(cors({
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    credentials: true
+}));
 app.use(express.json());
 
-// Socket.io Connection
+// 3. Make io accessible in routes via req.io
+app.use((req, res, next) => {
+    req.io = io;
+    next();
+});
+
+// 4. Socket.io Connection Logic
 io.on('connection', (socket) => {
     console.log(`User Connected: ${socket.id}`);
 
@@ -52,13 +69,7 @@ io.on('connection', (socket) => {
     });
 });
 
-// Make io accessible in routes via req.io
-app.use((req, res, next) => {
-    req.io = io;
-    next();
-});
-
-// Routes
+// 5. Mount Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/task', taskRoutes);
@@ -67,14 +78,19 @@ app.use('/api/activities', activityRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/comments', commentRoutes);
 
-// Error Handling Middleware
+// 6. Error Handling Middleware
 app.use((err, req, res, next) => {
     console.error(err.stack);
-    res.status(500).json({ success: false, message: 'Server Error', error: err.message });
+    res.status(500).json({
+        success: false,
+        message: 'Server Error',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
 });
 
 const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-});
+    console.log(`Socket.io running on port ${PORT}`);
+});  

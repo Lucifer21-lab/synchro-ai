@@ -2,60 +2,123 @@ const User = require('../models/User');
 const { generateToken } = require('../utils/jwt');
 const { ApiResponse, ApiError } = require('../utils/apiResponse');
 const { hashPassword, compareHash } = require('../utils/encryption');
+const sendEmail = require('../services/emailServices');
 
-// Register a user
+
+// Register a user (Step 1: Create Account & Send OTP)
 exports.register = async (req, res, next) => {
     try {
         const { name, email, password, skills } = req.body;
 
-        // Check if user already exists
         const userExists = await User.findOne({ email });
         if (userExists) {
             return next(new ApiError('User already exists with this email', 400));
         }
 
-        // Hash the password before saving
         const hashedPassword = await hashPassword(password);
 
-        // Create the user
+        // Generate 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes expiry
+
         const user = await User.create({
             name,
             email,
             password: hashedPassword,
-            skills: skills || []
+            skills: skills || [],
+            otp,
+            otpExpires,
+            isVerified: false
         });
 
-        if (user) {
-            // Send successful response with token
-            const token = generateToken(user._id);
+        // Send OTP via Email
+        try {
+            await sendEmail({
+                email: user.email,
+                subject: 'Synchro-AI: Verify your account',
+                message: `Your verification code is: ${otp}. It expires in 10 minutes.`
+            });
 
-            res.status(201).json(new ApiResponse(
-                {
-                    _id: user._id,
-                    name: user.name,
-                    email: user.email,
-                    token
-                },
-                'User registered successfully',
-                201
+            res.status(200).json(new ApiResponse(
+                { email: user.email },
+                'Registration successful. OTP sent to your email.'
             ));
+        } catch (error) {
+            // If email fails, delete user so they can try again
+            await User.findByIdAndDelete(user._id);
+            return next(new ApiError('Email could not be sent. Please try again.', 500));
         }
+
     } catch (error) {
         next(error);
     }
 };
 
-// Authenticate user and get token for login
+// Verify OTP (Step 2: Verify & Login)
+exports.verifyOtp = async (req, res, next) => {
+    try {
+        const { email, otp } = req.body;
+
+        // Find user and explicitly select OTP fields
+        const user = await User.findOne({ email }).select('+otp +otpExpires');
+
+        if (!user) {
+            return next(new ApiError('Invalid email or user not found', 400));
+        }
+
+        if (user.isVerified) {
+            return next(new ApiError('User is already verified. Please login.', 400));
+        }
+
+        if (user.otp !== otp) {
+            return next(new ApiError('Invalid OTP', 400));
+        }
+
+        if (user.otpExpires < Date.now()) {
+            return next(new ApiError('OTP has expired', 400));
+        }
+
+        // OTP is valid
+        user.isVerified = true;
+        user.otp = undefined;
+        user.otpExpires = undefined;
+        await user.save();
+
+        // Generate Token and Login
+        const token = generateToken(user._id);
+
+        res.status(200).json(new ApiResponse(
+            {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                token
+            },
+            'Account verified and logged in successfully'
+        ));
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Login
 exports.login = async (req, res, next) => {
     try {
         const { email, password } = req.body;
 
-        // Find user by email
-        // SAFETY: Explicitly select password in case Schema has { select: false }
         const user = await User.findOne({ email }).select('+password');
 
-        // Check if user exists and password matches
-        if (user && (await compareHash(password, user.password))) {
+        if (!user) {
+            return next(new ApiError('Invalid email or password', 401));
+        }
+
+        // Check if verified
+        if (!user.isVerified) {
+            return next(new ApiError('Account not verified. Please check your email for OTP.', 403));
+        }
+
+        if (await compareHash(password, user.password)) {
             const token = generateToken(user._id);
 
             res.status(200).json(new ApiResponse(
@@ -75,16 +138,88 @@ exports.login = async (req, res, next) => {
     }
 };
 
-// Get current user profile
 exports.getMe = async (req, res, next) => {
     try {
-        // OPTIMIZATION: req.user is already populated by the 'protect' middleware.
-        // There is no need to query the database again.
-
         res.status(200).json(new ApiResponse(
             req.user,
             'User profile retrieved successfully'
         ));
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Forgot Password
+exports.forgotPassword = async (req, res, next) => {
+    try {
+        const user = await User.findOne({ email: req.body.email });
+
+        if (!user) {
+            return next(new ApiError('There is no user with that email', 404));
+        }
+
+        // Get reset token
+        const resetToken = user.getResetPasswordToken();
+
+        await user.save({ validateBeforeSave: false });
+
+        // Create reset URL
+        // NOTE: This points to your FRONTEND URL
+        const resetUrl = `http://localhost:5173/reset-password/${resetToken}`;
+
+        const message = `
+            You are receiving this email because you (or someone else) has requested the reset of a password.
+            Please click on the link below to reset your password:
+            \n\n ${resetUrl} \n\n
+            This link will expire in 10 minutes.
+        `;
+
+        try {
+            await sendEmail({
+                email: user.email,
+                subject: 'Password Reset Token',
+                message
+            });
+
+            res.status(200).json(new ApiResponse(null, 'Email sent'));
+        } catch (err) {
+            console.error(err);
+            user.resetPasswordToken = undefined;
+            user.resetPasswordExpire = undefined;
+            await user.save({ validateBeforeSave: false });
+            return next(new ApiError('Email could not be sent', 500));
+        }
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Reset Password
+exports.resetPassword = async (req, res, next) => {
+    try {
+        // Get hashed token
+        const resetPasswordToken = crypto
+            .createHash('sha256')
+            .update(req.params.resettoken)
+            .digest('hex');
+
+        const user = await User.findOne({
+            resetPasswordToken,
+            resetPasswordExpire: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return next(new ApiError('Invalid token', 400));
+        }
+
+        // Set new password
+        user.password = await hashPassword(req.body.password);
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpire = undefined;
+
+        await user.save();
+
+        res.status(200).json(new ApiResponse(null, 'Password updated success'));
     } catch (error) {
         next(error);
     }

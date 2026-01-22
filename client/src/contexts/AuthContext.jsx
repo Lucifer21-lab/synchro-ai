@@ -1,59 +1,79 @@
-import { createContext, useState, useEffect, useContext } from 'react';
+import { createContext, useState, useEffect } from 'react';
 import api from '../api/axios';
+import { useNavigate } from 'react-router-dom';
 
-const AuthContext = createContext();
+// 1. Export Context so the hook can access it
+export const AuthContext = createContext();
 
-export const useAuth = () => useContext(AuthContext);
-
+// 2. AuthProvider Component (Keep this as the only major export)
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const navigate = useNavigate();
 
-    // Check if user is logged in on app load
     useEffect(() => {
-        const verifyUser = async () => {
+        const checkUser = async () => {
             const token = localStorage.getItem('token');
             if (token) {
                 try {
-                    // Call the /me endpoint you created in authController.js
                     const { data } = await api.get('/auth/me');
-                    setUser(data.data); // data.data because your ApiResponse wraps it
+                    setUser(data.data);
                 } catch (error) {
-                    console.error("Auth check failed", error);
                     localStorage.removeItem('token');
                 }
             }
             setLoading(false);
         };
-        verifyUser();
+        checkUser();
     }, []);
 
-    // Login Function
     const login = async (email, password) => {
         const { data } = await api.post('/auth/login', { email, password });
-        localStorage.setItem('token', data.data.token);
-        setUser(data.data);
-        return data; // Return data for UI handling (redirects etc)
-    };
-
-    // Register Function
-    const register = async (name, email, password) => {
-        const { data } = await api.post('/auth/register', { name, email, password });
         localStorage.setItem('token', data.data.token);
         setUser(data.data);
         return data;
     };
 
-    // Logout Function
+    const register = async (name, email, password) => {
+        const { data } = await api.post('/auth/register', { name, email, password });
+        return data;
+    };
+
+    const verifyOtp = async (email, otp) => {
+        const { data } = await api.post('/auth/verify-otp', { email, otp });
+        localStorage.setItem('token', data.data.token);
+        setUser(data.data);
+        return data;
+    };
+
+    const forgotPassword = async (email) => {
+        const { data } = await api.post('/auth/forgot-password', { email });
+        return data;
+    };
+
+    const resetPassword = async (token, password) => {
+        const { data } = await api.put(`/auth/reset-password/${token}`, { password });
+        return data;
+    };
+
     const logout = () => {
         localStorage.removeItem('token');
         setUser(null);
-        window.location.href = '/login';
+        navigate('/login');
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, register, logout, loading }}>
-            {!loading && children}
+        <AuthContext.Provider value={{
+            user,
+            login,
+            register,
+            verifyOtp,
+            forgotPassword,
+            resetPassword,
+            logout,
+            loading
+        }}>
+            {children}
         </AuthContext.Provider>
     );
 };
