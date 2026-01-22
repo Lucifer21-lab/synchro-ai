@@ -15,7 +15,7 @@ exports.createTask = async (req, res, next) => {
     }
 };
 
-// get all task for a specific task
+// get all task for a specific project
 exports.getProjectTasks = async (req, res, next) => {
     try {
         const tasks = await Task.find({ project: req.params.projectId })
@@ -52,6 +52,27 @@ exports.updateTaskStatus = async (req, res, next) => {
         });
 
         res.status(200).json(new ApiResponse(task, `Task status updated to ${status}`));
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get all tasks assigned to the current user across all projects
+
+exports.getMyTasks = async (req, res, next) => {
+    try {
+        // Find tasks assigned to user, exclude merged/completed if needed
+        const tasks = await Task.find({
+            assignedTo: req.user.id,
+            status: { $ne: 'Merged' } // $ne means "not equal"
+        })
+            .populate('project', 'title description') // Include project info
+            .sort({ deadline: 1 }); // Sort by upcoming deadlines
+
+        res.status(200).json(new ApiResponse(
+            tasks,
+            'Your personal task list retrieved successfully'
+        ));
     } catch (error) {
         next(error);
     }
