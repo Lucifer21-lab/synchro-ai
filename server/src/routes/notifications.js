@@ -1,11 +1,11 @@
-import express from 'express';
-import {
+const express = require('express');
+const {
     getNotifications,
     markAsRead,
     getActivityLogs,
     markAllAsRead
-} from '../controllers/notificationController.js';
-import { protect } from '../middleware/authMiddleware.js';
+} = require('../controllers/notifications.controller.js');
+const { protect } = require('../middleware/authMiddleware.js');
 
 const router = express.Router();
 
@@ -16,4 +16,4 @@ router.patch('/:id/read', markAsRead);
 router.patch('/read-all', markAllAsRead);
 router.get('/activity/:projectId', getActivityLogs); // The monitoring timeline
 
-export default router;
+module.exports = router;

@@ -9,4 +9,4 @@ const socketConfig = {
     transports: ['websocket', 'polling']
 };
 
-export default socketConfig;
+module.exports = socketConfig;

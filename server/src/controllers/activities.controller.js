@@ -10,7 +10,8 @@ exports.getProjectActivities = async (req, res, next) => {
             .populate('user', 'name email avatar')
             .sort({ createdAt: -1 });
 
-        res.status(201).json(new ApiResponse(
+        // FIX: Use 200 for GET requests (201 is for creation)
+        res.status(200).json(new ApiResponse(
             activities,
             'Project activity logs retrieved successfully'
         ));
@@ -22,11 +23,13 @@ exports.getProjectActivities = async (req, res, next) => {
 
 exports.getUserActivities = async (req, res, next) => {
     try {
-        const activities = await Activity.find({ user: req.user.id })
+        // FIX: Use req.user._id to ensure compatibility with Mongoose document
+        const activities = await Activity.find({ user: req.user._id })
             .populate('project', 'title')
             .sort({ createdAt: -1 });
 
-        res.status(201).json(new ApiResponse(
+        // FIX: Use 200 for GET requests
+        res.status(200).json(new ApiResponse(
             activities,
             'Personal activity logs retrieved successfully'
         ));

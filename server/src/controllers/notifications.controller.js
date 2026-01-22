@@ -1,26 +1,25 @@
 const Notification = require('../models/Notification');
 const Activity = require('../models/Activity');
-const { ApiResponse } = require('../utils/apiResponse');
+const { ApiResponse, ApiError } = require('../utils/apiResponse');
 
-// get all notification for the logged in user 
+// Get all notifications for the logged-in user
 exports.getNotifications = async (req, res, next) => {
     try {
-
-        // retrieve notification for the current users, latest first
-        const notification = await Notification.find({ recipient: req.user.id })
+        // Retrieve notifications for the current user, latest first
+        const notifications = await Notification.find({ recipient: req.user._id })
             .populate('sender', 'name avatar')
             .sort({ createdAt: -1 });
 
         res.status(200).json(new ApiResponse(
-            notification,
-            'Notification retrieved Successfully'
+            notifications,
+            'Notifications retrieved successfully'
         ));
     } catch (error) {
         next(error);
     }
 };
 
-// mark as read notification - single
+// Mark a single notification as read
 exports.markAsRead = async (req, res, next) => {
     try {
         const notification = await Notification.findByIdAndUpdate(
@@ -42,22 +41,24 @@ exports.markAsRead = async (req, res, next) => {
     }
 };
 
+// Mark all notifications as read for the user
 exports.markAllAsRead = async (req, res, next) => {
     try {
         await Notification.updateMany(
-            { recipient: req.user.id, isRead: false },
+            { recipient: req.user._id, isRead: false },
             { isRead: true }
         );
 
         res.status(200).json(new ApiResponse(
             null,
-            'All notifications are marked as read'
+            'All notifications marked as read'
         ));
     } catch (error) {
         next(error);
     }
 };
 
+// Get activity logs for a specific project (Monitoring Timeline)
 exports.getActivityLogs = async (req, res, next) => {
     try {
         const { projectId } = req.params;

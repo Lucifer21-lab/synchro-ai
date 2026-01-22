@@ -21,18 +21,19 @@ exports.protect = async (req, res, next) => {
         // Verify the token
         const decoded = verifyToken(token);
 
-        // Check if user still exists in database
-        const currentUser = await User.findById(decoded.id);
+        // FIX: Chain .select('-password') HERE (on the query), not on the result.
+        // This ensures we get the user WITHOUT the password hash.
+        const currentUser = await User.findById(decoded.id).select('-password');
+
         if (!currentUser) {
             return next(new ApiError('The user belonging to this token no longer exists.', 401));
         }
 
         // GRANT ACCESS TO PROTECTED ROUTE
-        // Attach user to the request object for use in controllers
-        req.user = currentUser.select('password');
+        req.user = currentUser;
         next();
-    } catch (error) {
 
+    } catch (error) {
         // Handle invalid or expired tokens
         if (error.name === 'JsonWebTokenError') {
             return next(new ApiError('Invalid token. Please log in again!', 401));

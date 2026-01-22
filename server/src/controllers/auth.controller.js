@@ -28,6 +28,7 @@ exports.register = async (req, res, next) => {
         if (user) {
             // Send successful response with token
             const token = generateToken(user._id);
+
             res.status(201).json(new ApiResponse(
                 {
                     _id: user._id,
@@ -44,13 +45,14 @@ exports.register = async (req, res, next) => {
     }
 };
 
-// authenticate user and get token for login
+// Authenticate user and get token for login
 exports.login = async (req, res, next) => {
     try {
         const { email, password } = req.body;
 
         // Find user by email
-        const user = await User.findOne({ email });
+        // SAFETY: Explicitly select password in case Schema has { select: false }
+        const user = await User.findOne({ email }).select('+password');
 
         // Check if user exists and password matches
         if (user && (await compareHash(password, user.password))) {
@@ -73,14 +75,14 @@ exports.login = async (req, res, next) => {
     }
 };
 
-// get current user profile
+// Get current user profile
 exports.getMe = async (req, res, next) => {
     try {
-        // req.user is already populated by your protect middleware
-        const user = await User.findById(req.user.id).select('-password');
+        // OPTIMIZATION: req.user is already populated by the 'protect' middleware.
+        // There is no need to query the database again.
 
         res.status(200).json(new ApiResponse(
-            user,
+            req.user,
             'User profile retrieved successfully'
         ));
     } catch (error) {

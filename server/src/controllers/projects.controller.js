@@ -13,9 +13,9 @@ exports.createProject = async (req, res, next) => {
         const projectData = {
             title,
             description,
-            owner: req.user.id,
-            members: [{ user: req.user.id, role: 'Owner' }]
-        }
+            owner: req.user._id,
+            members: [{ user: req.user._id, role: 'Owner' }]
+        };
 
         // encrypt api key
         if (aiApiKey) {
@@ -26,10 +26,10 @@ exports.createProject = async (req, res, next) => {
         // create project
         const project = await Project.create(projectData);
 
-        //log initial activity
+        // log initial activity
         await Activity.create({
             project: project._id,
-            user: req.user.id,
+            user: req.user._id,
             action: `Created Workspace: "${title}"`
         });
 
@@ -48,12 +48,12 @@ exports.getProjects = async (req, res, next) => {
     try {
         const projects = await Project.find({
             $or: [
-                { owner: req.user.id },
-                { 'member.user': req.user.id }
+                { owner: req.user._id },
+                { 'members.user': req.user._id } // Fixed: 'members' (plural) not 'member'
             ],
             isArchived: false
         })
-            .populate('owner', 'name email, avatar');
+            .populate('owner', 'name email avatar'); // Fixed: Removed comma
 
         res.status(200).json(new ApiResponse(projects, 'User projects retrieved successfully'));
     } catch (error) {
@@ -66,14 +66,14 @@ exports.getProjectById = async (req, res, next) => {
     try {
         const project = await Project.findById(req.params.id)
             .populate('owner', 'name email avatar')
-            .populate('member.user', 'name email avatar')
+            .populate('members.user', 'name email avatar') // Fixed: 'members' (plural)
             .populate('tasks');
 
         if (!project) {
             return next(new ApiError('Project not found', 404));
         }
 
-        res.status(200).json(new ApiResponse(project, 'Project details retrieved successsfully'));
+        res.status(200).json(new ApiResponse(project, 'Project details retrieved successfully'));
 
     } catch (error) {
         next(error);
@@ -81,7 +81,7 @@ exports.getProjectById = async (req, res, next) => {
 };
 
 // invite a member in project
-exports.inviiteMember = async (req, res, next) => {
+exports.inviteMember = async (req, res, next) => {
     try {
         const { email, role } = req.body;
 
@@ -95,6 +95,11 @@ exports.inviiteMember = async (req, res, next) => {
 
         // check if user is already a user
         const project = await Project.findById(req.params.id);
+
+        if (!project) {
+            return next(new ApiError('Project not found', 404));
+        }
+
         const alreadyMember = project.members.some(
             (m) => m.user.toString() === userToInvite._id.toString()
         );
@@ -109,7 +114,7 @@ exports.inviiteMember = async (req, res, next) => {
 
         await Activity.create({
             project: project._id,
-            user: req.user.id,
+            user: req.user._id,
             action: `Invited ${userToInvite.name} as ${role || 'Contributor'}`
         });
 

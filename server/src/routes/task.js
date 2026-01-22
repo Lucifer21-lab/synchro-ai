@@ -1,11 +1,11 @@
-import express from 'express';
-import {
+const express = require('express');
+const {
     createTask,
     getProjectTasks,
-    updateTaskStatus
-} from '../controllers/taskController.js';
-import { protect } from '../middleware/authMiddleware.js';
-import { getMyTasks } from '../controllers/task.controller.js';
+    updateTaskStatus,
+    getMyTasks
+} = require('../controllers/task.controller.js'); // Corrected filename to singular 'task'
+const { protect } = require('../middleware/authMiddleware.js');
 
 const router = express.Router();
 
@@ -16,4 +16,4 @@ router.get('/user/me', getMyTasks);
 router.get('/project/:projectId', getProjectTasks);
 router.patch('/:id/status', updateTaskStatus);
 
-export default router;
+module.exports = router;

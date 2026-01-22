@@ -2,8 +2,8 @@ const Submission = require('../models/Submission');
 const Task = require('../models/Task');
 const Activity = require('../models/Activity');
 const { uploadOnCloudinary } = require('../utils/cloudinaryHelper');
-const aiService = require('../services/aiService');
-const notificationService = require('../services/notificationService');
+const aiService = require('../services/aiServices'); // Ensure filename matches (aiServices vs aiService)
+const notificationService = require('../services/notificationServices');
 const { ApiResponse, ApiError } = require('../utils/apiResponse');
 
 exports.submitWork = async (req, res, next) => {
@@ -11,7 +11,7 @@ exports.submitWork = async (req, res, next) => {
         const { taskId, comment } = req.body;
         let contentUrl = req.body.contentUrl;
 
-        // Check if task exists and is valid for submission
+        // Check if task exists
         const task = await Task.findById(taskId);
         if (!task) {
             return next(new ApiError('Task not found', 404));
@@ -32,7 +32,7 @@ exports.submitWork = async (req, res, next) => {
         // Create the submission record
         const submission = await Submission.create({
             task: taskId,
-            submittedBy: req.user.id,
+            submittedBy: req.user._id, // FIX: Use _id
             contentUrl,
             comment
         });
@@ -41,10 +41,10 @@ exports.submitWork = async (req, res, next) => {
         task.status = 'Review-Requested';
         await task.save();
 
-        // Log activity and notify the project owner
+        // Log activity
         await Activity.create({
             project: task.project,
-            user: req.user.id,
+            user: req.user._id, // FIX: Use _id
             action: `Submitted work for task: "${task.title}"`
         });
 
@@ -58,16 +58,19 @@ exports.mergeWork = async (req, res, next) => {
     try {
         const { id } = req.params;
 
-        // Find submission and task
+        // Find submission and populate task
         const submission = await Submission.findById(id).populate('task');
         if (!submission) {
             return next(new ApiError('Submission not found', 404));
         }
 
         const task = submission.task;
+        if (!task) {
+            return next(new ApiError('Associated task not found', 404));
+        }
 
         // Trigger AI Review Service
-        // This generates automated feedback and a score before merging
+        // Note: Ensure aiService is imported correctly as 'aiServices' if that's the filename
         const aiReviewData = await aiService.reviewSubmission(
             task.project,
             { title: task.title, description: task.description },
@@ -81,21 +84,25 @@ exports.mergeWork = async (req, res, next) => {
 
         // Finalize Task
         task.status = 'Merged';
-        task.mergedBy = req.user.id;
+        task.mergedBy = req.user._id; // FIX: Use _id
         await task.save();
 
-        // Audit Trail & Real-time Notification
+        // Audit Trail
         await Activity.create({
             project: task.project,
-            user: req.user.id,
+            user: req.user._id, // FIX: Use _id
             action: `Merged task: "${task.title}" after AI Review (Score: ${aiReviewData.score})`
         });
 
-        await notificationService.notifyMerge(
-            submission.submittedBy,
-            req.user.id,
-            task.title
-        );
+        // Notify the user who submitted the work
+        // (Assuming notificationService exists and works)
+        if (notificationService && typeof notificationService.notifyMerge === 'function') {
+            await notificationService.notifyMerge(
+                submission.submittedBy,
+                req.user._id,
+                task.title
+            );
+        }
 
         res.status(200).json(new ApiResponse(
             { submission, task },

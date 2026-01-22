@@ -29,9 +29,11 @@ const projectSchema = new mongoose.Schema({
     }],
     // SECURE STORAGE: For your encryption.js utility output
     aiApiKey: {
-        iv: { type: String },
-        content: { type: String },
-        select: false
+        type: new mongoose.Schema({
+            iv: { type: String },
+            content: { type: String }
+        }, { _id: false }), // _id: false prevents creating an ID for this nested object
+        select: false       // Now Mongoose correctly hides this field by default
     },
     aiSummary: {
         type: String,

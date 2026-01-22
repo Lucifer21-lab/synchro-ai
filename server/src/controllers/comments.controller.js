@@ -1,5 +1,5 @@
 const Comment = require('../models/Comment');
-const Task = require('../models/Tasks');
+const Task = require('../models/Task');
 const { ApiResponse, ApiError } = require('../utils/apiResponse');
 
 // add a comment to a specific task
