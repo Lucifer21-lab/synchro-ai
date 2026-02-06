@@ -1,39 +1,56 @@
 const mongoose = require('mongoose');
 
 const taskSchema = new mongoose.Schema({
+    title: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    description: { type: String },
+
     project: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Project',
         required: true
     },
-    title: {
-        type: String,
+
+    // The person who created the task (The Owner)
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
         required: true
     },
-    description: {
-        type: String
-    },
+
+    // The person assigned to do the work
     assignedTo: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        ref: 'User',
+        default: null
+    },
+
+    // NEW FIELDS FOR WORKFLOW
+    assignmentStatus: {
+        type: String,
+        enum: ['Pending', 'Active', 'None'],
+        default: 'None'
+    },
+
+    leaveRequested: {
+        type: Boolean,
+        default: false
+    },
+
+    priority: {
+        type: String,
+        enum: ['Low', 'Medium', 'High'],
+        default: 'Medium'
     },
     status: {
         type: String,
-        enum: ['To-Do', 'In-Progress', 'Review-Requested', 'Merged'],
+        enum: ['To-Do', 'In-Progress', 'Submitted', 'Merged'],
         default: 'To-Do'
     },
-    priority: {
-        type: String,
-        enum: ['Low', 'Medium', 'High', 'Urgent'],
-        default: 'Medium'
-    },
-    deadline: {
-        type: Date
-    },
-    mergedBy: {
-        type: mongoose.Schema.Types.ObjectId,                 // Records who finalized the work
-        ref: 'User'
-    }
+    deadline: { type: Date }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Task', taskSchema);

@@ -17,12 +17,30 @@ const PrivateRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" />;
 };
 
+const PublicRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="p-4 text-white">Loading...</div>;
+  // If user exists, send them to dashboard
+  return user ? <Navigate to="/" replace /> : children;
+};
+
 function App() {
   return (
     <div className="min-h-screen bg-[#0f172a] text-gray-300">
       <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/login" element={
+          <PublicRoute>
+            <Login />
+          </PublicRoute>
+        } />
+
+        <Route path="/register" element={
+          <PublicRoute>
+            <Register />
+          </PublicRoute>
+        } />
+
+
 
         {/* Protected Routes */}
         <Route element={<PrivateRoute><Layout /></PrivateRoute>}>

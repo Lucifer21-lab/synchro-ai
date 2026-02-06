@@ -12,7 +12,11 @@ exports.register = async (req, res, next) => {
 
         const userExists = await User.findOne({ email });
         if (userExists) {
-            return next(new ApiError('User already exists with this email', 400));
+            if (!userExists.isVerified) {
+                await User.deleteOne({ email });
+            } else {
+                return next(new ApiError('User already exists with this email', 400));
+            }
         }
 
         const hashedPassword = await hashPassword(password);
@@ -36,7 +40,17 @@ exports.register = async (req, res, next) => {
             await sendEmail({
                 email: user.email,
                 subject: 'Synchro-AI: Verify your account',
-                message: `Your verification code is: ${otp}. It expires in 10 minutes.`
+                message: `Your verification code is: ${otp}. It expires in 10 minutes.`,
+                html: `
+                    <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+                        <h2 style="color: #4F46E5;">Verify your Synchro-AI Account</h2>
+                        <p>Hi ${user.name},</p>
+                        <p>Thank you for registering. Please use the code below to verify your email address:</p>
+                        <h1 style="background: #f3f4f6; padding: 10px 20px; display: inline-block; border-radius: 8px; letter-spacing: 5px;">${otp}</h1>
+                        <p>This code will expire in 10 minutes.</p>
+                        <p>If you didn't request this, please ignore this email.</p>
+                    </div>
+                `
             });
 
             res.status(200).json(new ApiResponse(

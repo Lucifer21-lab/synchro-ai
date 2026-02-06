@@ -23,8 +23,13 @@ const projectSchema = new mongoose.Schema({
         },
         role: {
             type: String,
-            enum: ['Owner', 'Contributor', 'Viewer'],
+            enum: ['Owner', 'Contributor', 'Viewer', 'Co-Owner'],
             default: 'Contributor'
+        },
+        status: {
+            type: String,
+            enum: ['Pending', 'Active'],
+            default: 'Pending'
         }
     }],
     // SECURE STORAGE: For your encryption.js utility output

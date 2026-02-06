@@ -3,7 +3,10 @@ const {
     createTask,
     getProjectTasks,
     updateTaskStatus,
-    getMyTasks
+    getMyTasks,
+    respondToInvite,
+    requestLeave,
+    handleLeaveRequest
 } = require('../controllers/task.controller.js'); // Corrected filename to singular 'task'
 const { protect } = require('../middleware/authMiddleware.js');
 
@@ -15,5 +18,8 @@ router.post('/', createTask);
 router.get('/user/me', getMyTasks);
 router.get('/project/:projectId', getProjectTasks);
 router.patch('/:id/status', updateTaskStatus);
+router.patch('/:id/respond', respondToInvite);
+router.patch('/:id/leave', requestLeave);
+router.patch('/:id/handle-leave', handleLeaveRequest);
 
 module.exports = router;
