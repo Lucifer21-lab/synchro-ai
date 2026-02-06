@@ -3,6 +3,20 @@ import { X, User, Flag, Calendar } from 'lucide-react';
 const CreateTaskModal = ({ isOpen, onClose, onSubmit, newTask, setNewTask, activeMembers }) => {
     if (!isOpen) return null;
 
+    // Handler to change assignment
+    const handleAssigneeChange = (e) => {
+        const selectedId = e.target.value;
+
+        // Find the member object to get their email
+        const member = activeMembers.find(m => m.user._id === selectedId);
+
+        setNewTask({
+            ...newTask,
+            assignedTo: selectedId,
+            assigneeEmail: member ? member.user.email : '' // <--- CRITICAL: Set Email
+        });
+    };
+
     return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
             <div className="bg-[#1e293b] rounded-xl border border-gray-700 p-6 w-full max-w-lg shadow-2xl">
@@ -35,8 +49,8 @@ const CreateTaskModal = ({ isOpen, onClose, onSubmit, newTask, setNewTask, activ
                             <label className="text-sm text-gray-400 block mb-1 flex items-center gap-1"><User size={14} /> Assign To</label>
                             <select
                                 className="w-full bg-[#0f172a] border border-gray-600 rounded p-2.5 text-white focus:border-indigo-500 outline-none appearance-none"
-                                value={newTask.assignedTo}
-                                onChange={e => setNewTask({ ...newTask, assignedTo: e.target.value })}
+                                value={newTask.assignedTo || ''}
+                                onChange={handleAssigneeChange} // <--- Use new handler
                             >
                                 <option value="">Unassigned</option>
                                 {activeMembers.map(m => (

@@ -1,33 +1,14 @@
 const Task = require('../models/Task');
 const Activity = require('../models/Activity');
 const { ApiResponse, ApiError } = require('../utils/apiResponse');
-const { taskService } = require('../services/taskServices');
+// IMPORT THE SERVICE
+const taskService = require('../services/taskServices');
 
-// Create Task (Sends Invite if assigned)
+// 1. Create Task (Delegates to Service for Email & Notifications)
 exports.createTask = async (req, res, next) => {
     try {
-        const { title, description, assignedTo, priority, deadline, projectId } = req.body;
-
-        const task = await Task.create({
-            title,
-            description,
-            project: projectId,
-            createdBy: req.user._id,
-            priority,
-            deadline,
-            assignedTo: assignedTo || null,
-            // If assigned immediately, status is Pending (Invite)
-            assignmentStatus: assignedTo ? 'Pending' : 'None'
-        });
-
-        // Log Activity
-        await Activity.create({
-            project: projectId,
-            user: req.user._id,
-            action: assignedTo
-                ? `Created task "${title}" and invited a member`
-                : `Created task "${title}"`
-        });
+        // We pass the whole body (which may contain assigneeEmail) and creator ID
+        const task = await taskService.createTaskAndNotify(req.body, req.user._id);
 
         res.status(201).json(new ApiResponse(task, 'Task created successfully'));
     } catch (error) {
@@ -35,49 +16,69 @@ exports.createTask = async (req, res, next) => {
     }
 };
 
-// Assignee Accepts or Rejects Invite
-exports.respondToInvite = async (req, res, next) => {
+// 2. Respond to Assignment (Accept/Decline)
+// Renamed to match the route we defined: respondToTaskAssignment
+exports.respondToTaskAssignment = async (req, res, next) => {
     try {
-        const { response } = req.body; // 'Accept' or 'Reject'
-        const task = await Task.findById(req.params.id);
+        const { response } = req.body; // 'accept' or 'decline'
 
-        if (!task) return next(new ApiError('Task not found', 404));
+        // Use service to handle logic and activity logging
+        const task = await taskService.respondToAssignment(req.params.id, req.user._id, response);
 
-        // Check if the user responding is actually the one assigned
-        if (task.assignedTo.toString() !== req.user._id.toString()) {
-            return next(new ApiError('Not authorized to respond to this task', 403));
-        }
-
-        if (response === 'Accept') {
-            task.assignmentStatus = 'Active';
-            await task.save();
-            await Activity.create({
-                project: task.project,
-                user: req.user._id,
-                action: `Accepted assignment for task "${task.title}"`
-            });
-            res.status(200).json(new ApiResponse(task, 'Task accepted'));
-        }
-        else if (response === 'Reject') {
-            // Remove assignment
-            task.assignedTo = null;
-            task.assignmentStatus = 'None';
-            await task.save();
-            await Activity.create({
-                project: task.project,
-                user: req.user._id,
-                action: `Rejected assignment for task "${task.title}"`
-            });
-            res.status(200).json(new ApiResponse(task, 'Task rejected'));
-        } else {
-            return next(new ApiError('Invalid response', 400));
-        }
+        res.status(200).json(new ApiResponse(task, `Task assignment ${response}ed successfully`));
     } catch (error) {
         next(error);
     }
 };
 
-// Assignee Requests to Leave
+// 3. Update Task Status (Delegates to Service to check for Acceptance first)
+exports.updateTaskStatus = async (req, res, next) => {
+    try {
+        const { status } = req.body;
+
+        // Service ensures user has 'Accepted' the task before moving it
+        const task = await taskService.updateStatus(req.params.id, status, req.user._id);
+
+        res.status(200).json(new ApiResponse(task, `Task status updated to ${status}`));
+    } catch (error) {
+        next(error);
+    }
+};
+
+// --- READ OPERATIONS (Keep as direct DB calls for now) ---
+
+// Get all tasks for a specific project
+exports.getProjectTasks = async (req, res, next) => {
+    try {
+        const tasks = await Task.find({ project: req.params.projectId })
+            .populate('assignedTo', 'name email avatar')
+            .sort({ createdAt: -1 });
+
+        res.status(200).json(new ApiResponse(tasks, 'Project task retrieved successfully'));
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Get all tasks assigned to the current user
+exports.getMyTasks = async (req, res, next) => {
+    try {
+        const tasks = await Task.find({
+            assignedTo: req.user._id,
+            // Optional: You might want to filter out 'Declined' tasks here if they aren't cleaned up immediately
+            assignmentStatus: { $ne: 'Declined' }
+        })
+            .populate('project', 'title description')
+            .sort({ deadline: 1 });
+
+        res.status(200).json(new ApiResponse(tasks, 'User tasks fetched successfully'));
+    } catch (error) {
+        next(error);
+    }
+};
+
+// --- LEAVE REQUEST LOGIC (Keep existing logic) ---
+
 exports.requestLeave = async (req, res, next) => {
     try {
         const task = await Task.findById(req.params.id);
@@ -90,15 +91,12 @@ exports.requestLeave = async (req, res, next) => {
         task.leaveRequested = true;
         await task.save();
 
-        // Notification could be sent to owner here (omitted for brevity)
-
         res.status(200).json(new ApiResponse(task, 'Leave request sent to owner'));
     } catch (error) {
         next(error);
     }
 };
 
-// Owner Approves or Rejects Leave Request
 exports.handleLeaveRequest = async (req, res, next) => {
     try {
         const { action } = req.body; // 'Approve' or 'Reject'
@@ -117,7 +115,7 @@ exports.handleLeaveRequest = async (req, res, next) => {
 
         if (action === 'Approve') {
             task.assignedTo = null;
-            task.assignmentStatus = 'None';
+            task.assignmentStatus = 'None'; // Reset status
             task.leaveRequested = false;
             await task.save();
             res.status(200).json(new ApiResponse(task, 'Leave request approved. Task is now unassigned.'));
@@ -129,69 +127,6 @@ exports.handleLeaveRequest = async (req, res, next) => {
         } else {
             return next(new ApiError('Invalid action', 400));
         }
-    } catch (error) {
-        next(error);
-    }
-};
-
-// get all task for a specific project
-exports.getProjectTasks = async (req, res, next) => {
-    try {
-        const tasks = await Task.find({ project: req.params.projectId })
-            .populate('assignedTo', 'name email avatar')
-            .sort({ createdAt: -1 });
-
-        res.status(200).json(new ApiResponse(tasks, 'Project task retrieved successfully'));
-    } catch (error) {
-        next(error);
-    }
-};
-
-// update task status
-exports.updateTaskStatus = async (req, res, next) => {
-    try {
-        const { status } = req.body;
-
-        // find and update task
-        const task = await Task.findByIdAndUpdate(
-            req.params.id,
-            { status },
-            { new: true, runValidators: true }
-        );
-
-        if (!task) {
-            return next(new ApiError('Task not found', 404));
-        }
-
-        // log status changes in activities
-        await Activity.create({
-            project: task.project,
-            user: req.user.id,
-            action: `Updated status of ${task.title} to ${status}`
-        });
-
-        res.status(200).json(new ApiResponse(task, `Task status updated to ${status}`));
-    } catch (error) {
-        next(error);
-    }
-};
-
-// Get all tasks assigned to the current user across all projects
-
-exports.getMyTasks = async (req, res, next) => {
-    try {
-        // Find tasks assigned to user, exclude merged/completed if needed
-        const tasks = await Task.find({
-            assignedTo: req.user.id,
-            status: { $ne: 'Merged' } // $ne means "not equal"
-        })
-            .populate('project', 'title description') // Include project info
-            .sort({ deadline: 1 }); // Sort by upcoming deadlines
-
-        res.status(200).json(new ApiResponse(
-            tasks,
-            'Your personal task list retrieved successfully'
-        ));
     } catch (error) {
         next(error);
     }

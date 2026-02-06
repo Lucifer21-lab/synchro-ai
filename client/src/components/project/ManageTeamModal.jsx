@@ -1,7 +1,27 @@
-import { X, Trash2, AlertCircle } from 'lucide-react';
+import { useState } from 'react'; // Import useState
+import { X, Trash2, AlertCircle, UserPlus, Mail } from 'lucide-react';
 
-const ManageTeamModal = ({ isOpen, onClose, members, currentUser, isOwner, onRemoveMember, onDeleteProjectClick }) => {
+const ManageTeamModal = ({ isOpen, onClose, members, currentUser, isOwner, onRemoveMember, onInvite, onDeleteProjectClick }) => {
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteRole, setInviteRole] = useState('Contributor');
+    const [isInviting, setIsInviting] = useState(false);
+
     if (!isOpen) return null;
+
+    const handleInviteSubmit = async (e) => {
+        e.preventDefault();
+        if (!inviteEmail) return;
+
+        setIsInviting(true);
+        try {
+            await onInvite(inviteEmail, inviteRole);
+            setInviteEmail(''); // Clear input on success
+        } catch (error) {
+            console.error("Invite failed", error);
+        } finally {
+            setIsInviting(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
@@ -11,12 +31,50 @@ const ManageTeamModal = ({ isOpen, onClose, members, currentUser, isOwner, onRem
                     <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={24} /></button>
                 </div>
 
-                <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                {/* --- NEW: INVITE SECTION --- */}
+                <form onSubmit={handleInviteSubmit} className="mb-6 p-4 bg-[#0f172a] rounded-lg border border-gray-700">
+                    <h4 className="text-sm font-bold text-gray-300 mb-3 flex items-center gap-2">
+                        <UserPlus size={16} className="text-cyan-400" /> Invite New Member
+                    </h4>
+                    <div className="flex gap-2 mb-2">
+                        <div className="relative flex-1">
+                            <Mail size={14} className="absolute left-3 top-3 text-gray-500" />
+                            <input
+                                type="email"
+                                placeholder="colleague@example.com"
+                                className="w-full bg-[#1e293b] border border-gray-600 rounded-lg py-2 pl-9 pr-3 text-sm text-white focus:border-cyan-500 outline-none"
+                                value={inviteEmail}
+                                onChange={(e) => setInviteEmail(e.target.value)}
+                                required
+                            />
+                        </div>
+                        <select
+                            className="bg-[#1e293b] border border-gray-600 rounded-lg px-2 text-sm text-white focus:border-cyan-500 outline-none"
+                            value={inviteRole}
+                            onChange={(e) => setInviteRole(e.target.value)}
+                        >
+                            <option value="Contributor">Contributor</option>
+                            <option value="Viewer">Viewer</option>
+                            <option value="Admin">Admin</option>
+                        </select>
+                    </div>
+                    <button
+                        type="submit"
+                        disabled={isInviting}
+                        className="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2 rounded-lg text-sm font-bold transition disabled:opacity-50"
+                    >
+                        {isInviting ? 'Sending Invite...' : 'Send Invitation'}
+                    </button>
+                </form>
+
+                {/* --- EXISTING MEMBER LIST --- */}
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                     {members.map(m => (
                         <div key={m.user._id} className="flex items-center justify-between p-3 bg-[#0f172a] rounded-lg border border-gray-700">
+                            {/* ... (Keep existing member list code exactly as is) ... */}
                             <div className="flex items-center gap-3">
                                 <div className="w-9 h-9 rounded-full bg-gray-700 flex items-center justify-center text-sm font-bold text-white border border-gray-600">
-                                    {m.user.name.charAt(0)}
+                                    <p className="text-white font-medium text-sm">{m.user?.name || 'Unknown User'}</p>
                                 </div>
                                 <div>
                                     <p className="text-white font-medium text-sm">{m.user.name}</p>
@@ -41,12 +99,14 @@ const ManageTeamModal = ({ isOpen, onClose, members, currentUser, isOwner, onRem
                     ))}
                 </div>
 
+                {/* ... (Keep existing footer/danger zone code) ... */}
                 <div className="mt-6 pt-4 border-t border-gray-700 text-center">
                     <p className="text-xs text-gray-500">Only project owners can remove team members.</p>
                 </div>
 
                 {isOwner && (
                     <div className="mt-8 pt-6 border-t border-red-500/20">
+                        {/* ... (Keep existing Danger Zone code) ... */}
                         <h4 className="text-red-400 text-xs font-bold uppercase mb-2 flex items-center gap-1">
                             <AlertCircle size={12} /> Danger Zone
                         </h4>

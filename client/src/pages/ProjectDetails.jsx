@@ -108,6 +108,23 @@ const ProjectDetails = () => {
         }
     };
 
+    const handleInviteMember = async (email, role) => {
+        try {
+            // Call the existing backend route: POST /projects/:id/invite
+            const res = await api.post(`/projects/${id}/invite`, { email, role });
+
+            // The backend returns the updated project object (res.data.data)
+            // Update local state to show the new member immediately
+            setProject(res.data.data);
+
+            alert(`Invitation sent to ${email}`);
+        } catch (err) {
+            // Show error (e.g., "User not found")
+            alert(err.response?.data?.message || "Failed to invite user");
+            throw err; // Re-throw to let the modal know it failed
+        }
+    };
+
     // --- CALCULATIONS & RENDER ---
     if (loading) return <div className="flex items-center justify-center h-screen bg-[#0f172a] text-white animate-pulse">Loading Workspace...</div>;
     if (error || !project) return <div className="flex items-center justify-center h-screen bg-[#0f172a] text-red-400">Error: {error || "Project not found"}</div>;
@@ -180,6 +197,7 @@ const ProjectDetails = () => {
                 currentUser={currentUser}
                 isOwner={isOwner}
                 onRemoveMember={handleRemoveMember}
+                onInvite={handleInviteMember} // <--- Pass the new handler
                 onDeleteProjectClick={() => setShowDeleteModal(true)}
             />
 

@@ -50,11 +50,13 @@ exports.getProjects = async (req, res, next) => {
         const projects = await Project.find({
             $or: [
                 { owner: req.user._id },
-                { 'members.user': req.user._id } // Fixed: 'members' (plural) not 'member'
+                { 'members.user': req.user._id }
             ],
             isArchived: false
         })
-            .populate('owner', 'name email avatar'); // Fixed: Removed comma
+            .populate('owner', 'name email avatar')
+            // ADD THIS LINE to get member names/avatars
+            .populate('members.user', 'name email avatar');
 
         res.status(200).json(new ApiResponse(projects, 'User projects retrieved successfully'));
     } catch (error) {
