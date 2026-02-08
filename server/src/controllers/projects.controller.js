@@ -55,14 +55,13 @@ exports.getProjects = async (req, res, next) => {
             isArchived: false
         })
             .populate('owner', 'name email avatar')
-            // ADD THIS LINE to get member names/avatars
-            .populate('members.user', 'name email avatar');
+            .populate('members.user', 'name email avatar'); // <--- This must be here
 
         res.status(200).json(new ApiResponse(projects, 'User projects retrieved successfully'));
     } catch (error) {
         next(error);
     }
-};
+}
 
 // get project by id
 exports.getProjectById = async (req, res, next) => {
@@ -83,26 +82,27 @@ exports.getProjectById = async (req, res, next) => {
     }
 };
 
-// invite a member in project
 exports.inviteMember = async (req, res, next) => {
     try {
         const { email, role } = req.body;
 
-        // find user using email
-        const userToInvite = await User.findOne({ email });
-
-        // check if user exist
-        if (!userToInvite) {
-            return next(new ApiError('User not found with this email', 404));
-        }
-
-        // check if user is already a user
+        // 1. Fetch project first to check ownership
         const project = await Project.findById(req.params.id);
-
         if (!project) {
             return next(new ApiError('Project not found', 404));
         }
 
+        // 2. Security Check: Only Owner can invite
+        if (project.owner.toString() !== req.user._id.toString()) {
+            return next(new ApiError('Not authorized. Only the project owner can invite members.', 403));
+        }
+
+        const userToInvite = await User.findOne({ email });
+        if (!userToInvite) {
+            return next(new ApiError('User not found with this email', 404));
+        }
+
+        // ... (rest of the existing logic: check duplicate member, push to array, save) ...
         const alreadyMember = project.members.some(
             (m) => m.user.toString() === userToInvite._id.toString()
         );
@@ -111,7 +111,6 @@ exports.inviteMember = async (req, res, next) => {
             return next(new ApiError('User is already member of the project', 400));
         }
 
-        // add member and log activity
         project.members.push({
             user: userToInvite._id,
             role: role || 'Contributor',
@@ -119,6 +118,7 @@ exports.inviteMember = async (req, res, next) => {
         });
         await project.save();
 
+        // ... (activity logging and response) ...
         await Activity.create({
             project: project._id,
             user: req.user._id,

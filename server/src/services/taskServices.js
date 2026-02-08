@@ -1,8 +1,8 @@
 const Task = require('../models/Task');
-const User = require('../models/User'); // 1. Import User Model
+const User = require('../models/User');
 const Activity = require('../models/Activity');
 const notificationService = require('../services/notificationServices');
-const sendEmail = require('../services/emailServices'); // 2. Import Email Service
+const sendEmail = require('../services/emailServices');
 const { ApiError } = require('../utils/apiResponse');
 
 class TaskService {
@@ -14,21 +14,23 @@ class TaskService {
         const { assigneeEmail, ...otherData } = taskData;
 
         let assignedUserId = null;
-        let assignmentStatus = 'Accepted'; // Default to accepted (e.g., unassigned or self-assigned)
+        let assignmentStatus = 'None'; // Default to None if unassigned
 
         // A. Resolve Email to User ID
         if (assigneeEmail) {
             const user = await User.findOne({ email: assigneeEmail });
             if (!user) {
-                // You can choose to throw error OR just create task unassigned. 
-                // Here we throw error to let user know email was wrong.
+                // Throw error if email provided but user not found
                 throw new ApiError(`User with email '${assigneeEmail}' not found.`, 404);
             }
             assignedUserId = user._id;
 
             // If assigning to someone else, status is Pending
+            // If assigning to self, status is Accepted (Active)
             if (user._id.toString() !== creatorId.toString()) {
                 assignmentStatus = 'Pending';
+            } else {
+                assignmentStatus = 'Active';
             }
         }
 
@@ -36,7 +38,8 @@ class TaskService {
         const task = await Task.create({
             ...otherData,
             assignedTo: assignedUserId,
-            assignmentStatus
+            assignmentStatus,
+            createdBy: creatorId // <--- FIXED: Added this required field
         });
 
         // C. Log activity
@@ -63,7 +66,7 @@ class TaskService {
                             <p>Status: <span style="color:orange; font-weight:bold;">Pending Acceptance</span></p>
                             <p>Please log in to your dashboard to Accept or Decline this task.</p>
                             <br/>
-                            <a href="${process.env.CLIENT_URL || 'http://localhost:5173'}/my-tasks" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to My Tasks</a>
+                            <a href="${process.env.CLIENT_URL || 'http://localhost:5173'}/" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to Dashboard</a>
                         </div>
                     `
                 });
@@ -83,7 +86,7 @@ class TaskService {
         return task;
     }
 
-    // 2. NEW METHOD: Handle Accept/Decline
+    // 2. Handle Accept/Decline
     async respondToAssignment(taskId, userId, response) {
         const task = await Task.findById(taskId);
         if (!task) throw new ApiError('Task not found', 404);
@@ -94,7 +97,10 @@ class TaskService {
         }
 
         if (response === 'accept') {
-            task.assignmentStatus = 'Accepted';
+            task.assignmentStatus = 'Active'; // Changed from 'Accepted' to 'Active' to match Schema Enum if needed, or keep 'Accepted' if your Schema allows it.
+            // Based on your Schema provided earlier: enum: ['Pending', 'Active', 'None']
+            // So I used 'Active' here.
+
             await task.save();
 
             await Activity.create({
@@ -105,7 +111,7 @@ class TaskService {
 
         } else if (response === 'decline') {
             task.assignedTo = null; // Remove assignment
-            task.assignmentStatus = 'Declined';
+            task.assignmentStatus = 'None'; // Reset status
             await task.save();
 
             await Activity.create({
@@ -120,13 +126,13 @@ class TaskService {
         return task;
     }
 
-    // 3. UPDATED: Update Status (Add Check)
+    // 3. Update Status
     async updateStatus(taskId, status, userId) {
 
         const task = await Task.findById(taskId);
         if (!task) throw new ApiError('Task not found', 404);
 
-        // NEW CHECK: User must accept task before moving it
+        // Check: User must accept task before moving it
         if (task.assignmentStatus === 'Pending') {
             throw new ApiError('You must accept the task assignment before working on it.', 400);
         }

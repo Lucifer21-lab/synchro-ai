@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutGrid, List, CheckSquare, Settings, X, LogOut, User } from 'lucide-react';
+import { LayoutGrid, Folder, CheckSquare, Settings, X, LogOut } from 'lucide-react'; // Changed List to Folder
 import { useAuth } from '../hooks/useAuth';
 
 const Sidebar = ({ isOpen, onClose }) => {
@@ -33,10 +33,34 @@ const Sidebar = ({ isOpen, onClose }) => {
 
             {/* Navigation Links */}
             <nav className="flex-1 px-4 space-y-2 mt-6">
-                <NavItem to="/" icon={<LayoutGrid size={20} />} label="Dashboard" active={isActive('/')} />
-                <NavItem to="/my-tasks" icon={<List size={20} />} label="My Tasks" active={isActive('/my-tasks')} />
-                <NavItem to="/kanban" icon={<CheckSquare size={20} />} label="Kanban Board" />
-                <NavItem to="/settings" icon={<Settings size={20} />} label="Settings" />
+                <NavItem
+                    to="/"
+                    icon={<LayoutGrid size={20} />}
+                    label="Dashboard"
+                    active={isActive('/')}
+                />
+
+                {/* UPDATED LINK */}
+                <NavItem
+                    to="/my-projects"
+                    icon={<Folder size={20} />}
+                    label="My Projects"
+                    active={isActive('/my-projects')}
+                />
+
+                <NavItem
+                    to="/kanban"
+                    icon={<CheckSquare size={20} />}
+                    label="Kanban Board"
+                    active={isActive('/kanban')}
+                />
+
+                <NavItem
+                    to="/settings"
+                    icon={<Settings size={20} />}
+                    label="Settings"
+                    active={isActive('/settings')}
+                />
             </nav>
 
             {/* User Profile Footer */}

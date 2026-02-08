@@ -148,6 +148,7 @@ const ProjectDetails = () => {
             <ProjectHeader
                 projectTitle={project.title}
                 onNewTaskClick={() => setShowCreateTask(true)}
+                isOwner={isOwner}  // <--- ADD THIS PROP
             />
 
             <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-gray-700">

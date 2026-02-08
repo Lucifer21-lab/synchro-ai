@@ -28,14 +28,14 @@ const Dashboard = () => {
         if (p.owner._id === user?._id) return false;
 
         // Find my membership record in the project
-        const membership = p.members.find(m => m.user === user?._id);
+        const membership = p.members.find(m => m.user?._id === user?._id);
         return membership?.status === 'Pending';
     });
 
     // 2. Active Projects: Projects I own OR have 'Active' status in
     const activeProjects = projects.filter(p => {
         if (p.owner._id === user?._id) return true;
-        const membership = p.members.find(m => m.user === user?._id);
+        const membership = p.members.find(m => m.user?._id === user?._id);
         return membership?.status === 'Active';
     });
 
@@ -142,40 +142,25 @@ const Dashboard = () => {
 
                 {/* --- PENDING INVITATIONS SECTION --- */}
                 {pendingInvites.length > 0 && (
-                    <div className="mb-8 animate-in fade-in slide-in-from-top-4 duration-500">
-                        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse shadow-[0_0_10px_#6366f1]"></span>
-                            Pending Invitations
-                        </h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <div className="mb-8">
+                        <h2 className="text-lg font-bold text-white mb-4">Pending Invitations</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                             {pendingInvites.map(project => (
-                                <div key={project._id} className="bg-[#1e293b] p-5 rounded-xl border border-indigo-500/30 shadow-lg shadow-indigo-500/10 flex flex-col justify-between">
-                                    <div>
-                                        <div className="flex items-center gap-3 mb-3">
-                                            <div className="w-10 h-10 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
-                                                <Folder size={20} />
-                                            </div>
-                                            <div>
-                                                <h3 className="text-white font-bold text-sm">{project.title}</h3>
-                                                <p className="text-xs text-gray-400">Invited by {project.owner?.name}</p>
-                                            </div>
-                                        </div>
-                                        <p className="text-sm text-gray-400 line-clamp-2 mb-4 h-10">
-                                            {project.description || "You have been invited to collaborate on this project."}
-                                        </p>
-                                    </div>
-                                    <div className="flex gap-3 mt-2 border-t border-gray-700/50 pt-3">
+                                <div key={project._id} className="bg-[#1e293b] p-5 rounded-xl border border-indigo-500/30">
+                                    <h3 className="text-white font-bold">{project.title}</h3>
+                                    <p className="text-xs text-gray-400">Invited by {project.owner?.name}</p>
+                                    <div className="flex gap-3 mt-4">
                                         <button
                                             onClick={() => handleAcceptInvite(project._id)}
-                                            className="flex-1 bg-emerald-600/10 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-600/30 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition"
+                                            className="flex-1 bg-emerald-600 text-white py-2 rounded-lg text-xs font-bold"
                                         >
-                                            <Check size={14} /> Accept
+                                            Accept
                                         </button>
                                         <button
                                             onClick={() => handleDeclineInvite(project._id)}
-                                            className="flex-1 bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-600/30 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition"
+                                            className="flex-1 bg-red-600 text-white py-2 rounded-lg text-xs font-bold"
                                         >
-                                            <X size={14} /> Decline
+                                            Decline
                                         </button>
                                     </div>
                                 </div>

@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import api from '../api/axios';
 import TaskCard from '../components/kanban/TaskCard';
 import TaskDetailPanel from '../components/kanban/TaskDetailPanel';
-import { Search, SlidersHorizontal, Menu, Plus } from 'lucide-react';
+import { Search, Menu, Plus, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 
 const Kanban = () => {
     const { isSidebarOpen, setIsSidebarOpen } = useOutletContext();
@@ -19,28 +19,46 @@ const Kanban = () => {
         'Merged': []
     };
 
+    // Separate list for invites
+    const pendingTasks = [];
+
+    const fetchTasks = async () => {
+        try {
+            const { data } = await api.get('/task/user/me');
+            setTasks(data.data);
+        } catch (error) {
+            console.error("Failed to load tasks", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchTasks = async () => {
-            try {
-                // Fetching user tasks for the board. 
-                // You can change this to '/task' if you want ALL project tasks.
-                const { data } = await api.get('/task/user/me');
-                setTasks(data.data);
-            } catch (error) {
-                console.error("Failed to load tasks", error);
-            } finally {
-                setLoading(false);
-            }
-        };
         fetchTasks();
     }, []);
 
     // Distribute tasks
     tasks.forEach(task => {
-        if (columns[task.status]) {
+        // 1. Pending Invites Logic
+        if (task.assignmentStatus === 'Pending') {
+            pendingTasks.push(task);
+        }
+        // 2. Active Board Logic
+        else if (columns[task.status] && (task.assignmentStatus === 'Active' || task.assignmentStatus === 'Accepted' || !task.assignmentStatus)) {
             columns[task.status].push(task);
         }
     });
+
+    // Accept/Decline Handler (Moved from MyTasks)
+    const handleResponse = async (taskId, response) => {
+        try {
+            await api.post(`/task/${taskId}/respond`, { response });
+            fetchTasks(); // Refresh to move task or remove it
+            alert(`Task ${response}ed successfully`);
+        } catch (err) {
+            alert(err.response?.data?.message || "Action failed");
+        }
+    };
 
     const columnColors = {
         'To-Do': 'border-t-gray-500',
@@ -68,6 +86,7 @@ const Kanban = () => {
                     <h1 className="text-xl font-bold text-white">Kanban Board</h1>
                 </div>
 
+                {/* Search & Actions */}
                 <div className="flex gap-3">
                     <div className="relative hidden sm:block">
                         <Search className="absolute left-3 top-2.5 text-gray-500" size={16} />
@@ -76,40 +95,62 @@ const Kanban = () => {
                             className="bg-[#1e293b] border border-gray-700 rounded-lg py-2 pl-9 pr-4 text-sm focus:outline-none focus:border-indigo-500 w-64 text-white"
                         />
                     </div>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm transition">
-                        <Plus size={16} /> <span className="hidden sm:inline">Add Task</span>
-                    </button>
                 </div>
             </div>
 
             {/* Board Area */}
             <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${selectedTask ? 'mr-[400px]' : ''}`}>
                 <div className="flex-1 overflow-x-auto overflow-y-hidden p-6">
+
+                    {/* --- NEW: PENDING INVITATIONS SECTION (Moved Here) --- */}
+                    {pendingTasks.length > 0 && (
+                        <div className="mb-8 p-6 bg-[#1e293b]/50 border border-yellow-500/20 rounded-xl animate-in fade-in slide-in-from-top-4">
+                            <h2 className="text-white font-bold mb-4 flex items-center gap-2">
+                                <AlertTriangle size={20} className="text-yellow-500" />
+                                Pending Invitations ({pendingTasks.length})
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {pendingTasks.map(task => (
+                                    <div key={task._id} className="bg-[#0f172a] border border-gray-700 p-5 rounded-lg shadow-lg flex flex-col gap-3 relative overflow-hidden">
+                                        <div className="absolute top-0 left-0 w-1 h-full bg-yellow-500"></div>
+                                        <div>
+                                            <h3 className="font-bold text-white text-lg leading-tight">{task.title}</h3>
+                                            <p className="text-xs text-gray-500 mt-1">Project: <span className="text-indigo-400">{task.project?.title || 'Unknown Project'}</span></p>
+                                        </div>
+                                        <div className="flex gap-3 mt-2 pt-2 border-t border-gray-800">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleResponse(task._id, 'accept'); }}
+                                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 rounded flex items-center justify-center gap-2 text-xs font-bold transition"
+                                            >
+                                                <CheckCircle2 size={14} /> Accept
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleResponse(task._id, 'decline'); }}
+                                                className="flex-1 bg-gray-800 hover:bg-red-600 hover:text-white text-gray-400 py-1.5 rounded flex items-center justify-center gap-2 text-xs font-bold transition border border-gray-700"
+                                            >
+                                                <XCircle size={14} /> Decline
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Standard Kanban Columns */}
                     <div className="flex gap-6 h-full min-w-[1000px]">
                         {Object.keys(columns).map((status) => (
                             <div key={status} className="flex-1 flex flex-col min-w-[280px]">
-                                {/* Column Header */}
                                 <div className={`flex justify-between items-center mb-4 px-4 py-3 bg-[#1e293b] rounded-lg border-t-4 ${columnColors[status]} border-x border-b border-gray-700`}>
                                     <h3 className="font-bold text-sm text-white">{status}</h3>
                                     <span className="bg-gray-700 text-gray-300 text-xs px-2 py-0.5 rounded-full">
                                         {columns[status].length}
                                     </span>
                                 </div>
-
-                                {/* Task List */}
                                 <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                                     {columns[status].map((task) => (
-                                        <TaskCard
-                                            key={task._id}
-                                            task={task}
-                                            onClick={setSelectedTask}
-                                        />
+                                        <TaskCard key={task._id} task={task} onClick={setSelectedTask} />
                                     ))}
-                                    {columns[status].length === 0 && (
-                                        <div className="border-2 border-dashed border-gray-800 rounded-xl h-24 flex items-center justify-center text-gray-600 text-sm">
-                                            No tasks
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         ))}
@@ -117,12 +158,8 @@ const Kanban = () => {
                 </div>
             </div>
 
-            {/* Details Panel Slide-over */}
             {selectedTask && (
-                <TaskDetailPanel
-                    task={selectedTask}
-                    onClose={() => setSelectedTask(null)}
-                />
+                <TaskDetailPanel task={selectedTask} onClose={() => setSelectedTask(null)} />
             )}
         </div>
     );

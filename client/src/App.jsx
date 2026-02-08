@@ -4,12 +4,13 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import ProjectDetails from './pages/ProjectDetails';
-import MyTasks from './pages/MyTasks';
+// import MyTasks from './pages/MyTasks';
 import Kanban from './pages/Kanban';
 import NotFound from './pages/NotFound'; // <--- Import this
 import Layout from './components/Layout';
 import ForgotPassword from './pages/ForgotPassword'; // Import
 import ResetPassword from './pages/ResetPassword';
+import MyProjects from './pages/MyProjects';
 
 const PrivateRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -45,7 +46,7 @@ function App() {
         {/* Protected Routes */}
         <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/my-tasks" element={<MyTasks />} />
+          <Route path="/my-projects" element={<MyProjects />} />
           <Route path="/kanban" element={<Kanban />} />
           <Route path="/project/:id" element={<ProjectDetails />} />
         </Route>
