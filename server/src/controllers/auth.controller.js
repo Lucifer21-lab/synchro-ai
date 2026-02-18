@@ -33,7 +33,7 @@ exports.register = async (req, res, next) => {
             skills: skills || [],
             otp,
             otpExpires,
-            isVerified: false
+            isVerified: "false"
         });
 
         // Send OTP via Email
@@ -94,7 +94,7 @@ exports.verifyOtp = async (req, res, next) => {
         }
 
         // OTP is valid
-        user.isVerified = true;
+        user.isVerified = "true";
         user.otp = undefined;
         user.otpExpires = undefined;
         await user.save();
