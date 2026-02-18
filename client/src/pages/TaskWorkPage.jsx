@@ -1,0 +1,243 @@
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+    Clock, ArrowLeft, Github, Upload,
+    Save, CheckCircle, AlertTriangle, FileText, Play
+} from 'lucide-react';
+import api from '../api/axios';
+import { useToast } from '../contexts/ToastContext';
+
+const TaskWorkPage = () => {
+    const { id } = useParams();
+    const navigate = useNavigate();
+    const { showToast } = useToast();
+
+    const [task, setTask] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [timeLeft, setTimeLeft] = useState('');
+    const [isOverdue, setIsOverdue] = useState(false);
+
+    // Submission State
+    const [githubUrl, setGithubUrl] = useState('');
+    const [file, setFile] = useState(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Fetch Task
+    useEffect(() => {
+        const fetchTask = async () => {
+            try {
+                const { data } = await api.get(`/task/${id}`);
+                setTask(data.data || data);
+            } catch (error) {
+                console.error(error);
+                showToast('Failed to load task details', 'error');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchTask();
+    }, [id]);
+
+    // Reverse Countdown Logic
+    useEffect(() => {
+        if (!task?.deadline) return;
+
+        const interval = setInterval(() => {
+            const now = new Date().getTime();
+            const deadline = new Date(task.deadline).getTime();
+            const distance = deadline - now;
+
+            if (distance < 0) {
+                setIsOverdue(true);
+                setTimeLeft('OVERDUE');
+            } else {
+                const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+                setTimeLeft(`${days}d ${hours}h ${minutes}m ${seconds}s`);
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [task]);
+
+    const handleUpdateTask = async (updates) => {
+        try {
+            const { data } = await api.put(`/task/${id}`, updates);
+            setTask(data.data);
+            showToast('Task updated!', 'success');
+        } catch (error) {
+            showToast('Update failed', 'error');
+        }
+    };
+
+    const handleRequestExtension = async () => {
+        // Placeholder for future logic (e.g., open a modal to select new date)
+        if (confirm("Send a request to the project owner for more time?")) {
+            try {
+                // Assuming you have a route for this, or just a placeholder alert
+                // await api.post(`/task/${id}/request-extension`);
+                showToast('Extension request sent to owner.', 'success');
+            } catch (error) {
+                showToast('Failed to send request.', 'error');
+            }
+        }
+    };
+
+    const handleSubmitWork = async (e) => {
+        e.preventDefault();
+
+        // --- VALIDATION CHECK ---
+        // Ensure at least one field is provided
+        if (!githubUrl.trim() && !file) {
+            showToast('You must provide a GitHub Link OR upload a file to submit.', 'error');
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            // NOTE: In a real app with file upload, you would use FormData here.
+            // Since we are simulating or using a simplified PUT for now:
+
+            const submissionPayload = {
+                status: 'Submitted',
+                // For demonstration, we save the link in the task description or a specific field
+                // ideally your backend supports a 'submission' object
+                submissionLink: githubUrl,
+                hasFile: !!file
+            };
+
+            await api.put(`/task/${id}`, submissionPayload);
+
+            showToast('Work submitted successfully!', 'success');
+            navigate(-1);
+        } catch (error) {
+            console.error(error);
+            showToast('Submission failed', 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    if (loading) return <div className="min-h-screen bg-[#0f172a] text-white flex items-center justify-center">Loading...</div>;
+    if (!task) return <div className="min-h-screen bg-[#0f172a] text-white flex items-center justify-center">Task not found</div>;
+
+    return (
+        <div className="min-h-screen bg-[#0f172a] text-gray-300 font-sans p-6 md:p-10">
+            {/* Header */}
+            <header className="max-w-5xl mx-auto mb-10 flex items-center justify-between">
+                <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-400 hover:text-white transition">
+                    <ArrowLeft size={20} /> Back to Board
+                </button>
+                <div className={`px-4 py-2 rounded-lg font-mono font-bold text-xl flex items-center gap-3 ${isOverdue ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'}`}>
+                    <Clock size={20} />
+                    {timeLeft || "No Deadline"}
+                </div>
+            </header>
+
+            <main className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-10">
+                {/* Left: Task Details */}
+                <div className="lg:col-span-2 space-y-8">
+                    <div>
+                        <h1 className="text-4xl font-bold text-white mb-4">{task.title}</h1>
+                        <div className="flex gap-4 mb-6">
+                            <span className="bg-[#1e293b] px-3 py-1 rounded-full text-sm border border-gray-700 text-gray-300">
+                                {task.project?.title || "Project Task"}
+                            </span>
+                            <span className={`px-3 py-1 rounded-full text-sm border ${task.priority === 'High' ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
+                                }`}>
+                                {task.priority} Priority
+                            </span>
+                        </div>
+                        <div className="bg-[#1e293b] p-6 rounded-2xl border border-gray-700">
+                            <h3 className="text-gray-400 font-bold uppercase text-xs tracking-wider mb-4">Description</h3>
+                            <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">
+                                {task.description || "No description provided."}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Quick Actions */}
+                    <div className="flex gap-4">
+                        {['To-Do', 'To-do'].includes(task.status) && (
+                            <button
+                                onClick={() => handleUpdateTask({ status: 'In-Progress' })}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition flex items-center gap-2"
+                            >
+                                <Play size={20} /> Mark In-Progress
+                            </button>
+                        )}
+                        <button
+                            onClick={handleRequestExtension}
+                            className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-xl font-bold transition"
+                        >
+                            Request Extension
+                        </button>
+                    </div>
+                </div>
+
+                {/* Right: Submission Panel */}
+                <div className="bg-[#1e293b] p-8 rounded-2xl border border-gray-700 h-fit sticky top-10">
+                    <h2 className="text-2xl font-bold text-white mb-6">Submit Work</h2>
+
+                    <form onSubmit={handleSubmitWork} className="space-y-6">
+                        {/* GitHub URL */}
+                        <div>
+                            <label className="block text-sm font-bold text-gray-400 mb-2">GitHub Repository URL</label>
+                            <div className="relative">
+                                <Github className="absolute left-3 top-3.5 text-gray-500" size={20} />
+                                <input
+                                    type="url"
+                                    placeholder="https://github.com/username/repo"
+                                    value={githubUrl}
+                                    onChange={(e) => setGithubUrl(e.target.value)}
+                                    className="w-full bg-[#0f172a] border border-gray-600 rounded-lg py-3 pl-10 pr-4 text-white focus:border-indigo-500 outline-none transition"
+                                    // Disable if file is selected (Optional, removes ambiguity)
+                                    disabled={!!file}
+                                />
+                            </div>
+                        </div>
+
+                        {/* File Upload */}
+                        <div>
+                            <label className="block text-sm font-bold text-gray-400 mb-2">Upload Files (Zip/Doc/Img)</label>
+                            <div className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-center hover:bg-[#0f172a]/50 transition cursor-pointer relative ${file ? 'border-emerald-500 bg-emerald-500/10' : 'border-gray-600'}`}>
+                                <input
+                                    type="file"
+                                    onChange={(e) => setFile(e.target.files[0])}
+                                    className="absolute inset-0 opacity-0 cursor-pointer"
+                                    // Disable if URL is entered
+                                    disabled={!!githubUrl}
+                                />
+                                {file ? (
+                                    <div className="flex items-center gap-2 text-emerald-400">
+                                        <FileText size={24} />
+                                        <span className="text-sm font-medium truncate max-w-[200px]">{file.name}</span>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <Upload className="text-gray-500 mb-2" size={32} />
+                                        <span className="text-sm text-gray-500">Click to upload or drag and drop</span>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Submit Button */}
+                        <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20 transition disabled:opacity-50"
+                        >
+                            {isSubmitting ? 'Submitting...' : <><CheckCircle size={20} /> Submit for Review</>}
+                        </button>
+                    </form>
+                </div>
+            </main>
+        </div>
+    );
+};
+
+export default TaskWorkPage;

@@ -12,7 +12,7 @@ class NotificationService {
 
     async notify({ recipient, sender, message, type }) {
         try {
-            // save to daatabase for persistence
+            // save to database for persistence
             const notification = await Notification.create({
                 recipient,
                 sender,
@@ -35,18 +35,33 @@ class NotificationService {
         }
     };
 
+    // --- HELPER METHODS ---
+
     async notifyTaskAssignment(recipientId, senderId, taskTitle) {
         try {
             return this.notify({
                 recipient: recipientId,
                 sender: senderId,
-                message: `You have been assigned a new task ${taskTitle}`,
+                message: `You have been assigned the task: "${taskTitle}"`,
                 type: 'Task'
             });
         } catch (error) {
-            console.error("Error while notifying the task assignment :", error);
+            console.error("Error notifying task assignment:", error);
         }
     };
+
+    async notifyTaskResponse(recipientId, senderId, taskTitle, response) {
+        try {
+            return this.notify({
+                recipient: recipientId,
+                sender: senderId,
+                message: `${response} the task: "${taskTitle}"`, // e.g. "Accepted the task..."
+                type: 'Task'
+            });
+        } catch (error) {
+            console.error("Error notifying task response:", error);
+        }
+    }
 
     async notifyMerge(recipientId, senderId, taskTitle) {
         return this.notify({

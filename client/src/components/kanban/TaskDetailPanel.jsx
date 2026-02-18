@@ -1,324 +1,341 @@
 import { useState, useEffect } from 'react';
-import { X, Github, FileText, CheckCircle, AlertTriangle, ExternalLink, UserX, LogOut, Clock, Upload, Send } from 'lucide-react';
+import {
+    X, CheckCircle, AlertTriangle, Play, Save,
+    Calendar, Flag, User, Clock, CheckCircle2, XCircle,
+    FileText, ExternalLink
+} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../api/axios';
+import { useToast } from '../../contexts/ToastContext';
 
 const TaskDetailPanel = ({ task, onClose, onUpdate }) => {
     const { user } = useAuth();
+    const navigate = useNavigate();
+    const { showToast } = useToast();
+
     const [timeLeft, setTimeLeft] = useState('');
     const [submissions, setSubmissions] = useState([]);
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
 
-    // Submission Form State
-    const [submissionData, setSubmissionData] = useState({
-        contentUrl: '',
-        comment: '',
-        file: null
+    // Edit State
+    const [isEditing, setIsEditing] = useState(false);
+    const [formData, setFormData] = useState({
+        title: '',
+        description: '',
+        priority: 'Medium',
+        deadline: ''
     });
 
-    if (!task) return null;
+    // Initialize Data
+    useEffect(() => {
+        if (task) {
+            setFormData({
+                title: task.title || '',
+                description: task.description || '',
+                priority: task.priority || 'Medium',
+                deadline: task.deadline ? new Date(task.deadline).toISOString().split('T')[0] : ''
+            });
+        }
+    }, [task]);
 
-    const isOwner = (task.createdBy?._id || task.createdBy) === user?._id;
-    const isAssignee = (task.assignedTo?._id || task.assignedTo) === user?._id;
+    // --- PERMISSION CHECKS ---
+    const isOwner = String(task?.createdBy?._id || task?.createdBy) === String(user?._id);
+    const isAssignee = String(task?.assignedTo?._id || task?.assignedTo) === String(user?._id);
 
     // --- 1. FETCH SUBMISSIONS ---
     useEffect(() => {
         const fetchSubmissions = async () => {
+            if (!task?._id) return;
             try {
-                // Assuming route: GET /api/submissions/task/:taskId
                 const { data } = await api.get(`/submissions/task/${task._id}`);
-                setSubmissions(data.data);
+                setSubmissions(data.data || []);
             } catch (error) {
                 console.error("Failed to load submissions", error);
             }
         };
-        if (task._id) fetchSubmissions();
-    }, [task._id]);
+        fetchSubmissions();
+    }, [task?._id]);
 
-    // --- 2. DEADLINE COUNTDOWN LOGIC ---
+    // --- 2. COUNTDOWN LOGIC ---
     useEffect(() => {
         const calculateTimeLeft = () => {
-            if (!task.deadline) return 'No Deadline';
+            if (!task?.deadline) return 'No Deadline';
             const difference = new Date(task.deadline) - new Date();
-
             if (difference < 0) return 'Overdue';
-
             const days = Math.floor(difference / (1000 * 60 * 60 * 24));
             const hours = Math.floor((difference / (1000 * 60 * 60)) % 24);
-            const minutes = Math.floor((difference / 1000 / 60) % 60);
-
-            return `${days}d ${hours}h ${minutes}m remaining`;
+            return `${days}d ${hours}h`;
         };
-
         setTimeLeft(calculateTimeLeft());
-        const timer = setInterval(() => {
-            setTimeLeft(calculateTimeLeft());
-        }, 60000); // Update every minute
-
-        return () => clearInterval(timer);
-    }, [task.deadline]);
+    }, [task?.deadline]);
 
     // --- HANDLERS ---
-
-    const handleStatusChange = async (newStatus) => {
-        try {
-            await api.patch(`/task/${task._id}/status`, { status: newStatus });
-            if (onUpdate) onUpdate();
-        } catch (err) {
-            alert(err.response?.data?.message || 'Failed to update status');
-        }
-    };
-
-    const handleSubmitWork = async (e) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        try {
-            const formData = new FormData();
-            formData.append('taskId', task._id);
-            formData.append('comment', submissionData.comment);
-
-            // Handle File vs URL
-            if (submissionData.file) {
-                formData.append('submissionFile', submissionData.file);
-            } else {
-                formData.append('contentUrl', submissionData.contentUrl);
-            }
-
-            // Call Backend: POST /api/submissions
-            await api.post('/submissions', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-
-            alert('Work submitted successfully!');
-            setSubmissionData({ contentUrl: '', comment: '', file: null });
-            if (onUpdate) onUpdate(); // Refresh parent to show 'Review-Requested' status
-        } catch (err) {
-            alert(err.response?.data?.message || 'Submission failed');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
     const handleInviteResponse = async (response) => {
         try {
-            await api.post(`/task/${task._id}/respond`, { response: response.toLowerCase() });
-            if (onUpdate) onUpdate();
+            const { data } = await api.post(`/task/${task._id}/respond`, { response: response.toLowerCase() });
+            if (onUpdate) onUpdate(data.data);
+            showToast(`Task ${response}ed`, 'success');
         } catch (err) {
-            alert(err.response?.data?.message || 'Failed to update status');
+            showToast(err.response?.data?.message || 'Action failed', 'error');
         }
     };
 
-    // Get the latest AI review from the most recent approved submission
+    const handleSaveEdit = async () => {
+        try {
+            const { data } = await api.put(`/task/${task._id}`, formData);
+            if (onUpdate) onUpdate(data.data);
+            setIsEditing(false);
+            showToast('Task updated successfully', 'success');
+        } catch (error) {
+            showToast('Failed to update task', 'error');
+        }
+    };
+
+    const handleAdminReview = async (action) => {
+        setIsProcessing(true);
+        try {
+            // Backend endpoint: PATCH /api/task/:id/review
+            const { data } = await api.patch(`/task/${task._id}/review`, { action });
+            if (onUpdate) onUpdate(data.data);
+            showToast(`Task successfully ${action === 'Merge' ? 'Merged' : 'Returned'}`, 'success');
+        } catch (error) {
+            showToast(error.response?.data?.message || 'Review failed', 'error');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const getAssigneeDisplay = () => {
+        if (!task?.assignedTo) return { text: 'Unassigned', color: 'text-gray-500' };
+        const name = task.assignedTo.name || 'Unknown User';
+        if (task.assignmentStatus === 'Pending') return { text: `${name} (Pending)`, color: 'text-amber-400' };
+        if (task.assignmentStatus === 'Declined') return { text: 'Declined', color: 'text-red-400' };
+        return { text: name, color: 'text-indigo-400' };
+    };
+
+    if (!task) return null;
+    const assigneeInfo = getAssigneeDisplay();
     const latestAIReview = submissions.find(s => s.aiReview && s.aiReview.score)?.aiReview;
 
     return (
-        <div className="w-96 md:w-[500px] bg-[#1e293b] border-l border-gray-700 flex flex-col h-full absolute right-0 top-0 shadow-2xl z-50 font-sans animate-in slide-in-from-right duration-300">
+        <div className="fixed inset-y-0 right-0 w-96 md:w-[500px] bg-[#1e293b] border-l border-gray-700 flex flex-col h-full shadow-2xl z-[100] font-sans animate-in slide-in-from-right duration-300">
 
-            {/* --- HEADER --- */}
+            {/* HEADER */}
             <div className="p-6 border-b border-gray-700 flex justify-between items-start sticky top-0 bg-[#1e293b] z-10 shadow-md">
-                <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono text-gray-500">#{task._id.slice(-4)}</span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold border uppercase tracking-wider ${task.status === 'Merged' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                                task.status === 'In-Progress' ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' :
-                                    task.status === 'Review-Requested' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
-                                        'bg-gray-700/50 text-gray-400 border-gray-600'
-                                }`}>
-                                {task.status}
-                            </span>
-                        </div>
-                        {/* Countdown Timer */}
+                <div className="flex-1 mr-4">
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-mono text-gray-500">#{task._id.slice(-4)}</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold border uppercase tracking-wider ${task.status === 'Merged' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                task.status === 'Submitted' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                    'bg-gray-700/50 text-gray-400 border-gray-600'
+                            }`}>
+                            {task.status}
+                        </span>
                         {task.deadline && (
-                            <div className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${timeLeft === 'Overdue' ? 'bg-red-500/10 text-red-400' : 'bg-gray-800 text-gray-300'
-                                }`}>
-                                <Clock size={12} />
-                                {timeLeft}
+                            <div className="bg-gray-800 text-gray-300 flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full">
+                                <Clock size={12} /> {timeLeft}
                             </div>
                         )}
                     </div>
-                    <h2 className="text-xl font-bold text-white leading-tight mb-2">{task.title}</h2>
-                    <p className="text-sm text-gray-400">{task.description || 'No description provided.'}</p>
+
+                    {isEditing ? (
+                        <input
+                            type="text"
+                            value={formData.title}
+                            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                            className="w-full bg-[#0f172a] border border-gray-600 rounded p-2 text-white font-bold text-lg focus:border-indigo-500 outline-none mb-2"
+                        />
+                    ) : (
+                        <h2 className="text-xl font-bold text-white leading-tight mb-2">{task.title}</h2>
+                    )}
                 </div>
-                <button onClick={onClose} className="text-gray-500 hover:text-white transition ml-4">
+                <button onClick={onClose} className="text-gray-500 hover:text-white transition">
                     <X size={24} />
                 </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
 
-                {/* --- 1. ACTION ALERTS --- */}
+                {/* --- 1. ADMIN REVIEW ACTIONS (Visible only for Owner when Submitted) --- */}
+                {isOwner && task.status === 'Submitted' && (
+                    <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-5 space-y-4">
+                        <div className="flex items-center gap-2 text-indigo-400">
+                            <AlertTriangle size={18} />
+                            <h3 className="text-sm font-bold uppercase tracking-wider">Review Request</h3>
+                        </div>
+                        <p className="text-xs text-gray-400">Review the assignee's work below. You can merge it into the project or decline it for revision.</p>
+                        <div className="flex gap-3">
+                            <button
+                                disabled={isProcessing}
+                                onClick={() => handleAdminReview('Merge')}
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2"
+                            >
+                                <CheckCircle2 size={16} /> Merge Task
+                            </button>
+                            <button
+                                disabled={isProcessing}
+                                onClick={() => handleAdminReview('Decline')}
+                                className="flex-1 bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-500/20 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2"
+                            >
+                                <XCircle size={16} /> Decline Merge
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- 2. ASSIGNEE INVITE ACTION --- */}
                 {isAssignee && task.assignmentStatus === 'Pending' && (
-                    <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-5">
+                    <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-5 animate-pulse">
                         <div className="flex items-center gap-2 text-indigo-400 mb-2">
                             <AlertTriangle size={18} />
                             <h3 className="text-sm font-bold">New Assignment</h3>
                         </div>
-                        <p className="text-xs text-gray-400 mb-4">You have been assigned to this task. Accept to start tracking time.</p>
+                        <p className="text-xs text-gray-400 mb-4">Accept to start tracking time.</p>
                         <div className="flex gap-3">
-                            <button onClick={() => handleInviteResponse('Accept')} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg text-xs font-bold transition">
-                                Accept Assignment
-                            </button>
-                            <button onClick={() => handleInviteResponse('Decline')} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg text-xs font-bold transition">
-                                Decline
-                            </button>
+                            <button onClick={() => handleInviteResponse('Accept')} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg text-xs font-bold transition">Accept</button>
+                            <button onClick={() => handleInviteResponse('Decline')} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg text-xs font-bold transition">Decline</button>
                         </div>
                     </div>
                 )}
 
-                {/* --- 2. WORKFLOW ACTIONS (Start / Submit) --- */}
-                {isAssignee && task.assignmentStatus === 'Active' && (
-                    <div className="space-y-4">
-                        {/* A. START TASK */}
-                        {task.status === 'To-Do' && (
-                            <button
-                                onClick={() => handleStatusChange('In-Progress')}
-                                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-emerald-900/20 transition flex items-center justify-center gap-2"
+                {/* --- 3. CONTROLS --- */}
+                <div className="flex gap-3">
+                    {isOwner && (
+                        isEditing ? (
+                            <button onClick={handleSaveEdit} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium flex items-center justify-center gap-2 transition">
+                                <Save size={18} /> Save Details
+                            </button>
+                        ) : (
+                            <button onClick={() => setIsEditing(true)} className="flex-1 bg-[#0f172a] hover:bg-gray-800 border border-gray-700 text-white py-2 rounded-lg font-medium transition">
+                                Edit Task
+                            </button>
+                        )
+                    )}
+
+                    {isAssignee && task.assignmentStatus === 'Accepted' && task.status !== 'Merged' && (
+                        <button
+                            onClick={() => navigate(`/task/${task._id}/work`)}
+                            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-lg font-bold flex items-center justify-center gap-2 shadow-lg transition"
+                        >
+                            <Play size={18} /> Go to Work Page
+                        </button>
+                    )}
+                </div>
+
+                {/* --- 4. DETAILS GRID --- */}
+                <div className="grid grid-cols-2 gap-6 bg-[#0f172a]/30 p-4 rounded-xl border border-gray-800">
+                    <div>
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Assignee</label>
+                        <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-white text-[10px]">
+                                {task.assignedTo?.name?.charAt(0) || <User size={12} />}
+                            </div>
+                            <span className={`text-sm font-medium ${assigneeInfo.color}`}>
+                                {assigneeInfo.text}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Priority</label>
+                        {isEditing ? (
+                            <select
+                                value={formData.priority}
+                                onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                                className="w-full bg-[#1e293b] border border-gray-600 rounded p-1 text-white text-xs focus:border-indigo-500 outline-none"
                             >
-                                <CheckCircle size={18} /> Start Working on Task
-                            </button>
-                        )}
-
-                        {/* B. SUBMIT WORK FORM */}
-                        {task.status === 'In-Progress' && (
-                            <div className="bg-[#0f172a] border border-gray-700 rounded-xl p-5 shadow-inner">
-                                <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                                    <Upload size={16} className="text-cyan-400" /> Submit Your Work
-                                </h3>
-                                <form onSubmit={handleSubmitWork} className="space-y-3">
-                                    <div>
-                                        <label className="text-xs text-gray-500 mb-1 block">Repository Link or URL</label>
-                                        <input
-                                            type="url"
-                                            placeholder="https://github.com/..."
-                                            className="w-full bg-[#1e293b] border border-gray-600 rounded-lg p-2 text-sm text-white focus:border-cyan-500 outline-none"
-                                            value={submissionData.contentUrl}
-                                            onChange={e => setSubmissionData({ ...submissionData, contentUrl: e.target.value })}
-                                            disabled={!!submissionData.file}
-                                        />
-                                    </div>
-                                    <div className="text-center text-xs text-gray-500">- OR -</div>
-                                    <div>
-                                        <label className="text-xs text-gray-500 mb-1 block">Upload File</label>
-                                        <input
-                                            type="file"
-                                            className="w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gray-700 file:text-white hover:file:bg-gray-600"
-                                            onChange={e => setSubmissionData({ ...submissionData, file: e.target.files[0] })}
-                                            disabled={!!submissionData.contentUrl}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-gray-500 mb-1 block">Comments</label>
-                                        <textarea
-                                            placeholder="Describe what you changed..."
-                                            className="w-full bg-[#1e293b] border border-gray-600 rounded-lg p-2 text-sm text-white focus:border-cyan-500 outline-none h-20 resize-none"
-                                            value={submissionData.comment}
-                                            onChange={e => setSubmissionData({ ...submissionData, comment: e.target.value })}
-                                            required
-                                        />
-                                    </div>
-                                    <button
-                                        type="submit"
-                                        disabled={isSubmitting}
-                                        className="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2 rounded-lg text-sm font-bold transition disabled:opacity-50 flex items-center justify-center gap-2"
-                                    >
-                                        {isSubmitting ? 'Uploading...' : <><Send size={16} /> Submit for Review</>}
-                                    </button>
-                                </form>
+                                <option>Low</option>
+                                <option>Medium</option>
+                                <option>High</option>
+                            </select>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <Flag size={14} className={task.priority === 'High' ? 'text-red-500' : task.priority === 'Medium' ? 'text-amber-500' : 'text-blue-500'} />
+                                <span className="text-sm text-gray-300">{task.priority}</span>
                             </div>
                         )}
                     </div>
-                )}
 
-                {/* --- 3. SUBMISSION HISTORY & AI FEEDBACK --- */}
-                {submissions.length > 0 && (
-                    <div className="space-y-4">
-                        <h3 className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
-                            <FileText size={14} /> Submission History
-                        </h3>
-
-                        {/* List */}
-                        <div className="space-y-3">
-                            {submissions.map((sub) => (
-                                <div key={sub._id} className="bg-[#0f172a] border border-gray-700 rounded-lg p-4 group hover:border-indigo-500/30 transition">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-8 h-8 rounded bg-gray-800 flex items-center justify-center text-gray-400">
-                                                <FileText size={16} />
-                                            </div>
-                                            <div>
-                                                <p className="text-sm text-white font-medium truncate max-w-[150px]">
-                                                    {sub.contentUrl ? 'Link Submission' : 'File Upload'}
-                                                </p>
-                                                <p className="text-[10px] text-gray-500">
-                                                    {new Date(sub.createdAt).toLocaleString()}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${sub.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                                            sub.status === 'Rejected' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                                                'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
-                                            }`}>
-                                            {sub.status}
-                                        </span>
-                                    </div>
-
-                                    {sub.comment && (
-                                        <p className="text-xs text-gray-400 italic mb-3 pl-2 border-l-2 border-gray-700">
-                                            "{sub.comment}"
-                                        </p>
-                                    )}
-
-                                    <div className="flex gap-2">
-                                        {sub.contentUrl && (
-                                            <a href={sub.contentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-cyan-400 hover:underline flex items-center gap-1">
-                                                <ExternalLink size={10} /> View Content
-                                            </a>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* --- 4. AI REVIEW DISPLAY (From Latest Approved Submission) --- */}
-                {latestAIReview && (
-                    <div className="border border-indigo-500/30 rounded-xl overflow-hidden relative bg-[#0f172a] animate-in fade-in slide-in-from-bottom-4">
-                        <div className="bg-indigo-600/10 p-4 border-b border-indigo-500/20 flex items-center gap-2">
-                            <div className="bg-indigo-500 p-1 rounded text-white shadow-[0_0_10px_#6366f1]"><CheckCircle size={14} /></div>
-                            <h3 className="text-white font-semibold text-sm">AI Quality Analysis</h3>
-                        </div>
-
-                        <div className="p-6 flex flex-col items-center">
-                            <div className={`w-20 h-20 rounded-full border-4 flex items-center justify-center mb-2 shadow-lg ${latestAIReview.score > 70 ? 'border-emerald-500 bg-emerald-500/5 shadow-emerald-500/20' : 'border-amber-500 bg-amber-500/5 shadow-amber-500/20'
-                                }`}>
-                                <span className="text-2xl font-bold text-white">{latestAIReview.score}</span>
+                    <div className="col-span-2">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Due Date</label>
+                        {isEditing ? (
+                            <input
+                                type="date"
+                                value={formData.deadline}
+                                onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
+                                className="w-full bg-[#1e293b] border border-gray-600 rounded p-2 text-white text-sm focus:border-indigo-500 outline-none"
+                            />
+                        ) : (
+                            <div className="flex items-center gap-2 text-gray-300">
+                                <Calendar size={16} className="text-gray-500" />
+                                <span className="text-sm">
+                                    {task.deadline ? new Date(task.deadline).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'No Deadline Set'}
+                                </span>
                             </div>
-                            <p className="text-gray-400 text-xs mb-4 font-medium">Quality Score</p>
-
-                            <div className="w-full bg-gray-800/50 p-3 rounded-lg border border-gray-700">
-                                <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-line">
-                                    {latestAIReview.feedback || "No detailed feedback provided."}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* --- ASSIGNEE INFO --- */}
-                <div className="bg-[#0f172a] p-4 rounded-xl border border-gray-700 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-lg">
-                            {task.assignedTo?.name?.charAt(0) || '?'}
-                        </div>
-                        <div>
-                            <p className="text-sm text-white font-bold">{task.assignedTo?.name || 'Unassigned'}</p>
-                            <p className="text-xs text-gray-500">Assignee</p>
-                        </div>
+                        )}
                     </div>
                 </div>
 
+                {/* --- 5. DESCRIPTION --- */}
+                <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 block">Description</label>
+                    {isEditing ? (
+                        <textarea
+                            value={formData.description}
+                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                            className="w-full bg-[#0f172a] border border-gray-600 rounded p-3 text-white min-h-[120px] focus:border-indigo-500 outline-none resize-none leading-relaxed"
+                        />
+                    ) : (
+                        <div className="bg-[#0f172a]/50 rounded-xl p-4 border border-gray-700/50">
+                            <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
+                                {task.description || "No description provided."}
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                {/* --- 6. SUBMISSION HISTORY & AI REVIEW --- */}
+                {latestAIReview && (
+                    <div className="border border-indigo-500/30 rounded-xl overflow-hidden relative bg-[#0f172a]">
+                        <div className="bg-indigo-600/10 p-4 border-b border-indigo-500/20 flex items-center gap-2">
+                            <div className="bg-indigo-50 p-1 rounded text-indigo-600 shadow-[0_0_10px_#6366f1]"><CheckCircle size={14} /></div>
+                            <h3 className="text-white font-semibold text-sm">Latest AI Quality Review</h3>
+                        </div>
+                        <div className="p-4">
+                            <div className="flex items-center gap-4 mb-3">
+                                <span className={`text-2xl font-bold ${latestAIReview.score > 70 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                    {latestAIReview.score}/100
+                                </span>
+                                <span className="text-xs text-gray-500 uppercase tracking-wider">Quality Score</span>
+                            </div>
+                            <p className="text-xs text-gray-300 leading-relaxed">
+                                {latestAIReview.feedback || "No feedback available."}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {submissions.length > 0 && (
+                    <div className="space-y-3 pt-4 border-t border-gray-800">
+                        <h3 className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
+                            <FileText size={14} /> Submission Assets
+                        </h3>
+                        {submissions.slice(0, 5).map((sub) => (
+                            <div key={sub._id} className="flex justify-between items-center text-xs bg-gray-800/50 p-3 rounded-lg group">
+                                <div className="flex items-center gap-2">
+                                    <ExternalLink size={12} className="text-cyan-400" />
+                                    <span className="text-gray-300 truncate max-w-[200px]">
+                                        {sub.contentUrl ? 'Link Submission' : 'File Upload'}
+                                    </span>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded border ${sub.status === 'Approved' ? 'text-emerald-400 border-emerald-500/20' :
+                                        sub.status === 'Rejected' ? 'text-red-400 border-red-500/20' : 'text-yellow-400 border-yellow-500/20'
+                                    }`}>{sub.status}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -31,8 +31,8 @@ const taskSchema = new mongoose.Schema({
     // NEW FIELDS FOR WORKFLOW
     assignmentStatus: {
         type: String,
-        enum: ['Pending', 'Active', 'None'],
-        default: 'None'
+        enum: ['Pending', 'Accepted', 'Declined'],
+        default: 'Pending'
     },
 
     leaveRequested: {

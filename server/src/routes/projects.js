@@ -4,24 +4,22 @@ const {
     getProjects,
     getProjectById,
     inviteMember,
-    acceptInvite,
-    rejectInvite,
-    removeMember,
-    deleteProject
-} = require('../controllers/projects.controller.js');
-const { protect } = require('../middleware/authMiddleware.js');
+    deleteProject,
+    updateProject
+} = require('../controllers/projects.controller');
+const { protect } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-router.use(protect); // Protect all routes in this file
+router.route('/')
+    .get(protect, getProjects)
+    .post(protect, createProject);
 
-router.post('/', createProject);
-router.get('/', getProjects);
-router.delete('/:projectId/members/:memberId', protect, removeMember);
-router.get('/:id', getProjectById);
-router.post('/:id/invite', inviteMember);
-router.patch('/:id/accept', acceptInvite);
-router.delete('/:id/leave', rejectInvite);
-router.delete('/:id', deleteProject);
+router.route('/:id')
+    .get(protect, getProjectById)
+    .put(protect, updateProject)
+    .delete(protect, deleteProject);
+
+router.post('/:id/invite', protect, inviteMember);
 
 module.exports = router;

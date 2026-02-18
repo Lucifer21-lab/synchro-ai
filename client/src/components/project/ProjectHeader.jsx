@@ -1,37 +1,146 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Plus, MoreVertical, ChevronRight } from 'lucide-react';
+import {
+    Plus, MoreVertical, ChevronRight,
+    Settings, X, Save, Pen, Loader2
+} from 'lucide-react';
+import api from '../../api/axios';
+import { useToast } from '../../contexts/ToastContext';
+import NotificationBell from '../NotificationBell';
 
-const ProjectHeader = ({ projectTitle, onNewTaskClick, isOwner }) => { // <--- Add isOwner prop
+const ProjectHeader = ({ project, onTaskCreate, onUpdateProject, isOwner }) => {
+    const { showToast } = useToast();
+
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    const [formData, setFormData] = useState({
+        title: '',
+        description: '',
+        aiApiKey: ''
+    });
+
+    useEffect(() => {
+        if (project) {
+            setFormData({
+                title: project.title || '',
+                description: project.description || '',
+                aiApiKey: ''
+            });
+        }
+    }, [project]);
+
+    const handleUpdate = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            const payload = { title: formData.title, description: formData.description };
+            if (formData.aiApiKey.trim()) payload.aiApiKey = formData.aiApiKey;
+
+            const { data } = await api.put(`/projects/${project._id}`, payload);
+            if (onUpdateProject) onUpdateProject(data.data);
+            showToast('Project updated successfully', 'success');
+            setIsEditModalOpen(false);
+        } catch (error) {
+            showToast(error.response?.data?.message || 'Failed to update', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
-        <header className="h-16 border-b border-gray-800 bg-[#0f172a]/95 backdrop-blur flex items-center justify-between px-6 shrink-0 z-10">
-            {/* ... (Left side remains same) ... */}
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-                <Link to="/" className="hover:text-white transition">Projects</Link>
-                <ChevronRight size={14} />
-                <span className="text-white font-medium truncate max-w-[200px]">{projectTitle}</span>
-            </div>
-
-            <div className="flex items-center gap-4">
-                {/* ... (Search bar remains same) ... */}
-                <div className="relative hidden md:block">
-                    {/* ... search input code ... */}
+        <>
+            {/* Added relative and z-40 to ensure the header stays above the main content area */}
+            <header className="h-16 border-b border-gray-800 bg-[#0f172a]/95 backdrop-blur flex items-center justify-between px-6 shrink-0 relative z-40">
+                {/* Left: Breadcrumbs */}
+                <div className="flex items-center gap-2 text-sm text-gray-400">
+                    <Link to="/" className="hover:text-white transition">Dashboard</Link>
+                    <ChevronRight size={14} />
+                    <span className="text-white font-medium truncate max-w-[200px]">
+                        {project?.title}
+                    </span>
                 </div>
 
-                {/* CONDITIONAL RENDERING FOR NEW TASK BUTTON */}
-                {isOwner && (
-                    <button
-                        onClick={onNewTaskClick}
-                        className="bg-cyan-500 hover:bg-cyan-600 text-[#0f172a] px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-lg shadow-cyan-500/20 transition"
-                    >
-                        <Plus size={18} /> <span className="hidden sm:inline">New Task</span>
-                    </button>
-                )}
+                {/* Right: Actions */}
+                <div className="flex items-center gap-3">
 
-                <button className="p-2 text-gray-400 hover:text-white transition rounded-lg hover:bg-gray-800">
-                    <MoreVertical size={20} />
-                </button>
-            </div>
-        </header>
+                    <NotificationBell />
+
+                    {isOwner && (
+                        <>
+                            <button
+                                onClick={() => setIsEditModalOpen(true)}
+                                className="bg-gray-800 hover:bg-gray-700 text-gray-200 px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium border border-gray-700 transition"
+                            >
+                                <Settings size={18} />
+                                <span className="hidden sm:inline">Settings</span>
+                            </button>
+
+                            <button
+                                onClick={onTaskCreate}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-lg shadow-indigo-500/20 transition"
+                            >
+                                <Plus size={18} />
+                                <span className="hidden sm:inline">New Task</span>
+                            </button>
+                        </>
+                    )}
+
+                    <button className="p-2 text-gray-400 hover:text-white transition rounded-lg hover:bg-gray-800">
+                        <MoreVertical size={20} />
+                    </button>
+                </div>
+            </header>
+
+            {/* EDIT PROJECT MODAL */}
+            {isEditModalOpen && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+                    <div className="bg-[#1e293b] rounded-2xl border border-gray-700 w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200">
+                        <div className="flex justify-between items-center p-6 border-b border-gray-700">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                <Settings className="text-indigo-400" size={24} />
+                                Workspace Settings
+                            </h2>
+                            <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-white p-1"><X size={20} /></button>
+                        </div>
+
+                        <form onSubmit={handleUpdate} className="p-6 space-y-5">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-400 mb-1.5">Project Title</label>
+                                <input
+                                    type="text"
+                                    value={formData.title}
+                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                    className="w-full bg-[#0f172a] border border-gray-600 rounded-lg py-3 px-4 text-white focus:border-indigo-500 outline-none"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-400 mb-1.5">Description</label>
+                                <textarea
+                                    value={formData.description}
+                                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                    className="w-full bg-[#0f172a] border border-gray-600 rounded-lg py-3 px-4 text-white focus:border-indigo-500 outline-none h-24 resize-none"
+                                />
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4 border-t border-gray-700/50">
+                                <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-gray-400 hover:text-white transition">Cancel</button>
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition disabled:opacity-50"
+                                >
+                                    {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                                    Save
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </>
     );
 };
 

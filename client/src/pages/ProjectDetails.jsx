@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../contexts/ToastContext';
 
 // Components
 import ProjectHeader from '../components/project/ProjectHeader';
@@ -10,6 +11,7 @@ import WorkloadStatus from '../components/project/WorkloadStatus';
 import ActivityLog from '../components/project/ActivityLog';
 import AIPulseCard from '../components/project/AIPulseCard';
 import TeamMembersCard from '../components/project/TeamMembersCard';
+import AllProjectTasks from '../components/project/AllProjectTasks';
 
 // Modals
 import CreateTaskModal from '../components/project/CreateTaskModal';
@@ -20,6 +22,7 @@ const ProjectDetails = () => {
     const { id } = useParams();
     const { user: currentUser } = useAuth();
     const navigate = useNavigate();
+    const { showToast } = useToast();
 
     // --- STATE ---
     const [project, setProject] = useState(null);
@@ -58,6 +61,7 @@ const ProjectDetails = () => {
             } catch (err) {
                 console.error(err);
                 setError(err.response?.data?.message || "Failed to load project data");
+                showToast("Failed to load project data", "error");
             } finally {
                 setLoading(false);
             }
@@ -66,6 +70,21 @@ const ProjectDetails = () => {
     }, [id]);
 
     // --- HANDLERS ---
+
+    // Update Task locally when an action occurs (like Admin Review/Merge)
+    const handleTaskUpdate = async (updatedTask) => {
+        // Update local tasks
+        setTasks(prev => prev.map(t => t._id === updatedTask._id ? updatedTask : t));
+
+        // Refresh Activity Log to show the new "Merged" or "Declined" entry
+        try {
+            const activityRes = await api.get(`/activities/project/${id}`);
+            setActivities(activityRes.data.data || []);
+        } catch (err) {
+            console.warn("Could not refresh activity log", err);
+        }
+    };
+
     const handleCreateTask = async (e) => {
         e.preventDefault();
         try {
@@ -77,9 +96,9 @@ const ProjectDetails = () => {
             setTasks([data.data, ...tasks]);
             setShowCreateTask(false);
             setNewTask({ title: '', description: '', assignedTo: '', priority: 'Medium', deadline: '' });
-            alert("Task created successfully!");
+            showToast("Task created successfully!", "success");
         } catch (err) {
-            alert(err.response?.data?.message || "Failed to create task");
+            showToast(err.response?.data?.message || "Failed to create task", "error");
         }
     };
 
@@ -91,8 +110,9 @@ const ProjectDetails = () => {
                 ...prev,
                 members: prev.members.filter(m => m.user._id !== memberId)
             }));
+            showToast("Member removed successfully", "success");
         } catch (err) {
-            alert(err.response?.data?.message || "Failed to remove member");
+            showToast(err.response?.data?.message || "Failed to remove member", "error");
         }
     };
 
@@ -100,36 +120,46 @@ const ProjectDetails = () => {
         setIsDeleting(true);
         try {
             await api.delete(`/projects/${id}`);
+            showToast("Project deleted successfully", "success");
             navigate('/');
         } catch (err) {
-            alert(err.response?.data?.message || 'Failed to delete project');
+            showToast(err.response?.data?.message || 'Failed to delete project', "error");
             setIsDeleting(false);
             setShowDeleteModal(false);
         }
     };
 
-    const handleInviteMember = async (email, role) => {
+    const refreshActivityLog = async () => {
         try {
-            // Call the existing backend route: POST /projects/:id/invite
-            const res = await api.post(`/projects/${id}/invite`, { email, role });
-
-            // The backend returns the updated project object (res.data.data)
-            // Update local state to show the new member immediately
-            setProject(res.data.data);
-
-            alert(`Invitation sent to ${email}`);
+            const activityRes = await api.get(`/activities/project/${id}`);
+            setActivities(activityRes.data.data || []);
         } catch (err) {
-            // Show error (e.g., "User not found")
-            alert(err.response?.data?.message || "Failed to invite user");
-            throw err; // Re-throw to let the modal know it failed
+            console.warn("Activity refresh failed", err);
         }
     };
 
-    // --- CALCULATIONS & RENDER ---
+    const handleInviteMember = async (email, role) => {
+        try {
+            const res = await api.post(`/projects/${id}/invite`, { email, role });
+            setProject(res.data.data);
+            showToast(`Invitation sent to ${email}`, "success");
+
+            // Refresh Log to show "Admin invited User"
+            refreshActivityLog();
+        } catch (err) {
+            showToast(err.response?.data?.message || "Failed to invite user", "error");
+        }
+    };
+
+    const handleUpdateProject = (updatedProject) => {
+        setProject(updatedProject);
+    };
+
+    // --- CALCULATIONS ---
     if (loading) return <div className="flex items-center justify-center h-screen bg-[#0f172a] text-white animate-pulse">Loading Workspace...</div>;
     if (error || !project) return <div className="flex items-center justify-center h-screen bg-[#0f172a] text-red-400">Error: {error || "Project not found"}</div>;
 
-    const isOwner = currentUser?._id === project.owner._id;
+    const isOwner = currentUser?._id === (project.owner?._id || project.owner);
     const activeMembers = project.members.filter(m => m.status === 'Active');
 
     const totalTasks = tasks.length;
@@ -144,11 +174,11 @@ const ProjectDetails = () => {
 
     return (
         <div className="flex-1 flex flex-col h-full bg-[#0f172a] overflow-hidden font-sans">
-
             <ProjectHeader
-                projectTitle={project.title}
-                onNewTaskClick={() => setShowCreateTask(true)}
-                isOwner={isOwner}  // <--- ADD THIS PROP
+                project={project}
+                onTaskCreate={() => setShowCreateTask(true)}
+                onUpdateProject={handleUpdateProject}
+                isOwner={isOwner}
             />
 
             <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-gray-700">
@@ -167,6 +197,14 @@ const ProjectDetails = () => {
                                 totalTasks={totalTasks}
                             />
                         </div>
+
+                        {/* PROJECT TASKS LIST WITH UPDATE HANDLER */}
+                        <AllProjectTasks
+                            tasks={tasks}
+                            isOwner={isOwner}
+                            onTaskUpdate={handleTaskUpdate} // Pass the handler here
+                        />
+
                         <ActivityLog activities={activities} />
                     </div>
 
@@ -198,7 +236,7 @@ const ProjectDetails = () => {
                 currentUser={currentUser}
                 isOwner={isOwner}
                 onRemoveMember={handleRemoveMember}
-                onInvite={handleInviteMember} // <--- Pass the new handler
+                onInvite={handleInviteMember}
                 onDeleteProjectClick={() => setShowDeleteModal(true)}
             />
 
@@ -207,7 +245,7 @@ const ProjectDetails = () => {
                 onClose={() => setShowDeleteModal(false)}
                 onConfirm={confirmDeleteProject}
                 isDeleting={isDeleting}
-                projectTitle={project.title}
+                projectTitle={project.name || project.title}
             />
         </div>
     );

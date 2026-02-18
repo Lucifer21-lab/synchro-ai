@@ -3,6 +3,7 @@ const { generateToken } = require('../utils/jwt');
 const { ApiResponse, ApiError } = require('../utils/apiResponse');
 const { hashPassword, compareHash } = require('../utils/encryption');
 const sendEmail = require('../services/emailServices');
+const crypto = require('crypto');
 
 
 // Register a user (Step 1: Create Account & Send OTP)
@@ -234,6 +235,25 @@ exports.resetPassword = async (req, res, next) => {
         await user.save();
 
         res.status(200).json(new ApiResponse(null, 'Password updated success'));
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.updateDetails = async (req, res, next) => {
+    try {
+        const fieldsToUpdate = {
+            name: req.body.name,
+            skills: req.body.skills,
+            avatar: req.body.avatar
+        };
+
+        const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
+            new: true,
+            runValidators: true
+        });
+
+        res.status(200).json(new ApiResponse(user, 'Profile updated successfully'));
     } catch (error) {
         next(error);
     }

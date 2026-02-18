@@ -56,6 +56,12 @@ export const AuthProvider = ({ children }) => {
         return data;
     };
 
+    const updateUserProfile = async (userData) => {
+        const { data } = await api.put('/auth/updatedetails', userData);
+        setUser(data.data); // Update local state immediately
+        return data;
+    };
+
     const logout = () => {
         localStorage.removeItem('token');
         setUser(null);
@@ -70,6 +76,7 @@ export const AuthProvider = ({ children }) => {
             verifyOtp,
             forgotPassword,
             resetPassword,
+            updateUserProfile,
             logout,
             loading
         }}>

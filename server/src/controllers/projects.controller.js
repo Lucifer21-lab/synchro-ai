@@ -4,6 +4,7 @@ const Activity = require('../models/Activity');
 const Task = require('../models/Task');
 const { ApiResponse, ApiError } = require('../utils/apiResponse');
 const { encrypt } = require('../utils/encryption');
+const sendEmail = require('../services/emailServices');
 
 // create a new project workspace
 exports.createProject = async (req, res, next) => {
@@ -68,15 +69,28 @@ exports.getProjectById = async (req, res, next) => {
     try {
         const project = await Project.findById(req.params.id)
             .populate('owner', 'name email avatar')
-            .populate('members.user', 'name email avatar') // Fixed: 'members' (plural)
-            .populate('tasks');
+            .populate('members.user', 'name email avatar')
+            // --- CRITICAL FIX: NESTED POPULATION ---
+            .populate({
+                path: 'tasks',
+                populate: {
+                    path: 'assignedTo',
+                    select: 'name email avatar' // Fetch these specific fields
+                }
+            })
+            .populate({
+                path: 'tasks',
+                populate: {
+                    path: 'createdBy',
+                    select: 'name'
+                }
+            });
 
         if (!project) {
             return next(new ApiError('Project not found', 404));
         }
 
         res.status(200).json(new ApiResponse(project, 'Project details retrieved successfully'));
-
     } catch (error) {
         next(error);
     }
@@ -85,47 +99,62 @@ exports.getProjectById = async (req, res, next) => {
 exports.inviteMember = async (req, res, next) => {
     try {
         const { email, role } = req.body;
-
-        // 1. Fetch project first to check ownership
         const project = await Project.findById(req.params.id);
-        if (!project) {
-            return next(new ApiError('Project not found', 404));
-        }
 
-        // 2. Security Check: Only Owner can invite
-        if (project.owner.toString() !== req.user._id.toString()) {
-            return next(new ApiError('Not authorized. Only the project owner can invite members.', 403));
+        if (!project) return next(new ApiError('Project not found', 404));
+
+        // AUTH CHECK: Only Owner or Co-Owners can invite
+        const isOwner = project.owner.toString() === req.user._id.toString();
+        const isCoOwner = project.members.some(m =>
+            m.user.toString() === req.user._id.toString() &&
+            m.role === 'Co-Owner' &&
+            m.status === 'Active'
+        );
+
+        if (!isOwner && !isCoOwner) {
+            return next(new ApiError('Unauthorized: Only Owners or Co-Owners can invite members', 403));
         }
 
         const userToInvite = await User.findOne({ email });
-        if (!userToInvite) {
-            return next(new ApiError('User not found with this email', 404));
-        }
+        if (!userToInvite) return next(new ApiError('User not registered on Synchro-AI', 404));
 
-        // ... (rest of the existing logic: check duplicate member, push to array, save) ...
-        const alreadyMember = project.members.some(
-            (m) => m.user.toString() === userToInvite._id.toString()
-        );
+        const isAlreadyMember = project.members.some(m => m.user.toString() === userToInvite._id.toString());
+        if (isAlreadyMember) return next(new ApiError('User is already in this project', 400));
 
-        if (alreadyMember) {
-            return next(new ApiError('User is already member of the project', 400));
-        }
-
+        // Add to project members
         project.members.push({
             user: userToInvite._id,
             role: role || 'Contributor',
             status: 'Pending'
         });
+
         await project.save();
 
-        // ... (activity logging and response) ...
+
+
+        // EMAIL SERVICE TRIGGER
+        try {
+            await sendEmail({
+                email: userToInvite.email,
+                subject: `Invitation to collaborate on ${project.title}`,
+                message: `Hi ${userToInvite.name},\n\nYou have been invited to join "${project.title}" as a ${role}.\n\nLog in to your dashboard to accept the invitation.`
+            });
+        } catch (emailErr) {
+            console.warn("Email could not be sent, but user was invited in DB", emailErr);
+        }
+
+        const updatedProject = await Project.findById(project._id)
+            .populate('owner', 'name email')
+            .populate('members.user', 'name email');
+
         await Activity.create({
             project: project._id,
             user: req.user._id,
-            action: `Invited ${userToInvite.name} as ${role || 'Contributor'} (Pending Acceptance)`
+            action: `Invited ${userToInvite.name} as ${role}`
         });
 
-        res.status(200).json(new ApiResponse(project, `Successfully invited ${userToInvite.name}`));
+        res.status(200).json(new ApiResponse(updatedProject, 'Invitation sent successfully'));
+
     } catch (error) {
         next(error);
     }
@@ -267,6 +296,33 @@ exports.deleteProject = async (req, res, next) => {
         await project.deleteOne();
 
         res.status(200).json(new ApiResponse(null, 'Project and all associated data deleted successfully'));
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.updateProject = async (req, res, next) => {
+    try {
+        const { name, aiApiKey } = req.body;
+        const project = await Project.findById(req.params.id);
+
+        if (!project) {
+            return next(new ApiError('Project not found', 404));
+        }
+
+        if (project.owner.toString() !== req.user.id) {
+            return next(new ApiError('Not authorized to update this project', 401));
+        }
+
+        if (name) project.name = name;
+        if (aiApiKey) {
+            // Re-encrypt the new key
+            project.aiApiKey = encrypt(aiApiKey);
+        }
+
+        await project.save();
+
+        res.status(200).json(new ApiResponse(project, 'Project updated successfully'));
     } catch (error) {
         next(error);
     }

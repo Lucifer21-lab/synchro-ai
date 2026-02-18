@@ -65,19 +65,30 @@ const Sidebar = ({ isOpen, onClose }) => {
 
             {/* User Profile Footer */}
             <div className="p-4 border-t border-gray-700 absolute bottom-0 w-full">
-                <div className="bg-gray-800 p-3 rounded-lg flex items-center justify-between group">
-                    <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm">
-                            {user?.name?.charAt(0) || 'U'}
+                <div className="bg-gray-800 p-3 rounded-lg flex items-center justify-between group hover:bg-gray-750 transition">
+                    {/* Wrap user info in Link */}
+                    <Link to="/profile" className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer" onClick={() => window.innerWidth < 768 && onClose()}>
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm shrink-0 overflow-hidden">
+                            {user?.avatar && user.avatar.startsWith('http') ? (
+                                <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                            ) : (
+                                user?.name?.charAt(0) || 'U'
+                            )}
                         </div>
                         <div className="overflow-hidden">
                             <p className="text-sm text-white font-medium truncate w-24">{user?.name}</p>
-                            <p className="text-xs text-gray-400 truncate w-24">Developer</p>
+                            <p className="text-xs text-gray-400 truncate w-24">View Profile</p>
                         </div>
-                    </div>
+                    </Link>
+
+                    {/* Logout Button (Stop Propagation to prevent navigation when logging out) */}
                     <button
-                        onClick={logout}
-                        className="text-gray-500 hover:text-red-400 transition"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            logout();
+                        }}
+                        className="text-gray-500 hover:text-red-400 transition ml-2"
                         title="Logout"
                     >
                         <LogOut size={18} />
